@@ -387,7 +387,14 @@ def journallog_out(func):
             **kw
     ):
         if headers is None:
-            headers = {}
+            headers = {'User-Agent': this.syscode}
+        else:
+            headers['User-Agent'] = this.syscode
+
+        f_back = inspect.currentframe().f_back.f_back
+        if f_back.f_back is not None:
+            f_back = f_back.f_back
+        method_name = getattr(f_back.f_code, co_qualname)
 
         parse_url = urlparse(url)
         address = parse_url.scheme + '://' + parse_url.netloc + parse_url.path
@@ -434,10 +441,6 @@ def journallog_out(func):
         response_time = datetime.now()
         response_time_str = response_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
-        f_back = inspect.currentframe().f_back.f_back
-        if f_back.f_back is not None:
-            f_back = f_back.f_back
-
         try:
             response_data = response.json()
         except ValueError:
@@ -477,10 +480,10 @@ def journallog_out(func):
             'fcode': this.syscode,
             'tcode': this.syscode,
             'method_code': None,
-            'method_name': getattr(f_back.f_code, co_qualname),
+            'method_name': method_name,
             'http_method': response.request.method,
             'request_time': request_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
-            'request_headers': headers,
+            'request_headers': dict(response.request.headers),
             'request_payload': OmitLongString(request_data),
             'response_time': response_time_str,
             'response_headers': dict(response.headers),
