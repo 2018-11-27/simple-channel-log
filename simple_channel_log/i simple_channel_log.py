@@ -73,6 +73,15 @@ def __init__(
     if hasattr(this, 'appname'):
         raise RuntimeError('repeat initialization.')
 
+    if re.match(r'[A-Za-z]\d{9}$', syscode) is None:
+        raise ValueError('parameter syscode "%s" is illegal' % syscode)
+
+    prefix = re.match(r'[a-zA-Z]\d{9}[_-]', appname)
+    if prefix is None:
+        appname = syscode.lower() + '_' + appname
+    elif prefix.group()[:-1].upper() != syscode.upper():
+        raise ValueError('parameter appname "%s" is illegal' % syscode)
+
     if stream is not unique:
         warnings.warn(
             'parameter "stream" will be deprecated soon, replaced to '
@@ -82,9 +91,9 @@ def __init__(
         if output_to_terminal is None:
             output_to_terminal = stream
 
-    that.appname = this.appname = appname
-    that.syscode = this.syscode = syscode
-
+    that.appname = this.appname = appname = \
+        appname[0].lower() + appname[1:10] + '_' + appname[11:]
+    that.syscode = this.syscode = syscode.upper()
     this.output_to_terminal = output_to_terminal
 
     handlers = [{
