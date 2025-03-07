@@ -26,15 +26,15 @@ else:
     from flask import current_app
     from flask import has_request_context
 
-    def __new__(cls, *a, **kw):
-        app = super(Flask, cls).__new__(cls)
-        cls.__apps__.append(app)
-        return app
+    def wrap_flask_init_method(func):
+        @functools.wraps(func)
+        def inner(self, *a, **kw):
+            func(self, *a, **kw)
+            Flask.__apps__.append(self)
+        return inner
 
-    if sys.version_info.major < 3:
-        __new__ = staticmethod(__new__)
-
-    Flask.__apps__, Flask.__new__ = [], __new__
+    Flask.__apps__ = []
+    Flask.__init__ = wrap_flask_init_method(Flask.__init__)
 
 try:
     import requests
@@ -181,7 +181,7 @@ def __init__(
 def register_flask_middleware():
     start = time.time()
     while not Flask.__apps__ and time.time() - start < 300:
-        time.sleep(.02)
+        time.sleep(.01)
 
     for app in Flask.__apps__:
         app.before_request(journallog_in_before)
