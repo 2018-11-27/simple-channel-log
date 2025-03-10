@@ -18,7 +18,7 @@ def __init__(
         你的应用名称，以服务编码开头。
     @param logdir:
         指定日志目录，默认为 "/app/logs"（如果你的系统是 Windows 则默认为
-        "C:\\BllLogs\\<syscode>_<appname>"）。
+        "C:\\BllLogs\\<appname>"）。
     @param when:
         控制日志轮转周期，默认为 "D"。支持按天/小时/分钟等单位滚动。可选值有：W:周, D:天,
         H:小时, M:分钟, S:秒, 等等。

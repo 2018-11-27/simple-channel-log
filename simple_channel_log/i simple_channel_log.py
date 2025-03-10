@@ -200,8 +200,16 @@ def logger(msg, *args, **extra):
     elif isinstance(msg, (dict, list, tuple)):
         msg = OmitLongString(msg)
 
-    transaction_id = g.transaction_id \
-        if Flask is not None and has_request_context() else uuid.uuid4().hex
+    if Flask is not None and has_request_context():
+        transaction_id = g.transaction_id
+        method_code = (
+            getattr(request, 'method_code', None) or
+            FindData(g.request_headers, 'Method-Code').result or
+            FindData(g.request_data, 'method_code').result
+        )
+    else:
+        transaction_id = uuid.uuid4().hex
+        method_code = None
 
     f_back = inspect.currentframe().f_back
     level = f_back.f_code.co_name
@@ -215,7 +223,7 @@ def logger(msg, *args, **extra):
         'thread': threading.current_thread().ident,
         'code_message': msg,
         'transaction_id': transaction_id,
-        'method_code': None,
+        'method_code': method_code,
         'method_name': getattr(f_back.f_code, co_qualname),
         'error_code': None,
         'tag': None,
@@ -275,6 +283,8 @@ def journallog_in_before():
 
     g.request_time = datetime.now()
 
+    request_headers = dict(request.headers)
+
     if request.args:
         request_data = request.args.to_dict()
     elif request.form:
@@ -286,13 +296,13 @@ def journallog_in_before():
         except ValueError:
             request_data = None
 
-    g.request_data = request_data
-
     g.transaction_id = (
-        FindTransactionID(dict(request.headers)).result or
-        FindTransactionID(request_data).result or
+        FindData(request_headers, 'Transaction-ID').result or
+        FindData(request_data, 'transaction_id').result or
         uuid.uuid4().hex
     )
+    g.request_headers = request_headers
+    g.request_data = request_data
 
 
 def journallog_in(response):
@@ -301,6 +311,12 @@ def journallog_in(response):
 
     parsed_url = urlparse(request.url)
     address = parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path
+
+    method_code = (
+        getattr(request, 'method_code', None) or
+        FindData(g.request_headers, 'Method-Code').result or
+        FindData(g.request_data, 'method_code').result
+    )
 
     view_func = current_app.view_functions.get(request.endpoint)
     method_name = view_func.__name__ if view_func else None
@@ -333,7 +349,7 @@ def journallog_in(response):
     response_time = datetime.now()
     response_time_str = response_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
-    total_time = round((response_time - g.request_time).total_seconds(), 3)
+    total_time = int(round((response_time - g.request_time).total_seconds()))
 
     glog.info(jsonx.dumps({
         'app_name': this.appname + '_info',
@@ -346,11 +362,11 @@ def journallog_in(response):
         'address': address,
         'fcode': request.headers.get('User-Agent'),
         'tcode': this.syscode,
-        'method_code': None,
+        'method_code': method_code,
         'method_name': method_name,
         'http_method': request.method,
         'request_time': g.request_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
-        'request_headers': dict(request.headers),
+        'request_headers': g.request_headers,
         'request_payload': OmitLongString(g.request_data),
         'response_time': response_time_str,
         'response_headers': dict(response.headers),
@@ -389,6 +405,7 @@ def journallog_out(func):
         if headers is None:
             headers = {'User-Agent': this.syscode}
         else:
+            DeleteKeys(headers, 'User-Agent')
             headers['User-Agent'] = this.syscode
 
         f_back = inspect.currentframe().f_back.f_back
@@ -421,16 +438,17 @@ def journallog_out(func):
             transaction_id = g.transaction_id
         else:
             transaction_id = (
-                FindTransactionID(headers).result or
-                FindTransactionID(request_data).result or
+                FindData(headers, 'Transaction-ID').result or
+                FindData(request_data, 'transaction_id').result or
                 uuid.uuid4().hex
             )
-
-        for name in headers.copy():
-            namex = name.replace('-', '').replace('_', '').lower()
-            if namex == 'transactionid':
-                del headers[name]
+        DeleteKeys(headers, 'Transaction-ID')
         headers['Transaction-ID'] = transaction_id
+
+        method_code = (
+            FindData(headers, 'Method-Code').result or
+            FindData(request_data, 'method_code').result
+        )
 
         request_time = datetime.now()
         response = func(
@@ -466,7 +484,7 @@ def journallog_out(func):
                     account_type = account_num = \
                     response_account_type = response_account_num = None
 
-        total_time = round((response_time - request_time).total_seconds(), 3)
+        total_time = int(round((response_time - request_time).total_seconds()))
 
         glog.info(jsonx.dumps({
             'app_name': this.appname + '_info',
@@ -479,7 +497,7 @@ def journallog_out(func):
             'address': address,
             'fcode': this.syscode,
             'tcode': this.syscode,
-            'method_code': None,
+            'method_code': method_code,
             'method_name': method_name,
             'http_method': response.request.method,
             'request_time': request_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
@@ -522,34 +540,54 @@ class OmitLongString(dict):
     def __new__(cls, data):
         if isinstance(data, dict):
             return dict.__new__(cls)
-
         if isinstance(data, (list, tuple)):
             return data.__class__(cls(v) for v in data)
-
         if sys.version_info.major < 3 and isinstance(data, str):
             data = data.decode('utf8')
-
         if isinstance(data, (unicode, str)) and len(data) > 1000:
             data = '<Ellipsis>'
-
         return data
 
 
-class FindTransactionID(dict):
+class FindData(dict):
     result = None
 
-    def __init__(self, data, root=None):
+    def __init__(self, data, key, root=None):
         if root is None:
+            self.key = key.replace('-', '').replace('_', '').lower()
             root = self
         for k, v in data.items():
-            if k.replace('-', '').replace('_', '').lower() == 'transactionid':
+            if k.replace('-', '').replace('_', '').lower() == root.key:
                 root.result = data[k]
                 break
-            dict.__setitem__(self, k, FindTransactionID(v, root=root))
+            dict.__setitem__(self, k, FindData(v, key=key, root=root))
 
-    def __new__(cls, data, root=None):
+    def __new__(cls, data, *a, **kw):
         if isinstance(data, dict):
             return dict.__new__(cls)
         if isinstance(data, (list, tuple)):
-            return data.__class__(cls(v) for v in data)
+            return data.__class__(cls(v, *a, **kw) for v in data)
+        return cls
+
+
+class DeleteKeys(dict):
+
+    def __init__(self, data, key, root=None):
+        if root is None:
+            self.key = key.replace('-', '').replace('_', '').lower()
+            root = self
+        result = []
+        for k, v in data.items():
+            if k.replace('-', '').replace('_', '').lower() == root.key:
+                result.append(k)
+            else:
+                dict.__setitem__(self, k, DeleteKeys(v, key=key, root=root))
+        for k in result:
+            del data[k]
+
+    def __new__(cls, data, *a, **kw):
+        if isinstance(data, dict):
+            return dict.__new__(cls)
+        if isinstance(data, (list, tuple)):
+            return data.__class__(cls(v, *a, **kw) for v in data)
         return cls

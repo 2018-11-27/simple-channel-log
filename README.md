@@ -60,6 +60,20 @@ log.__init__(..., enable_journallog_in=True)
 
 设置 `enable_journallog_in=True` 表示启用 Flask 流水日志，将自动记录每个接口的调用信息。
 
+若要在日志中记录接口编码，你需要将接口编码传递给请求对象 `flask.request`：
+
+```python
+# coding:utf-8
+from flask import request
+
+@app.get("/index")
+def index():
+    request.method_code = "<method_code>"  # 将接口编码传递给请求对象
+    return jsonify({"msg": "ok"})
+```
+
+如果调用方已经将接口编码传递到请求头 `request.headers["Method-Code"]`，则会自动获取。
+
 ### Requests 外部调用追踪
 
 ```python
@@ -71,6 +85,15 @@ log.__init__(..., enable_journallog_out=True)
 ```
 
 设置 `enable_journallog_out=True` 表示启用 Requests 外部调用追踪，将自动记录每个请求的调用信息。
+
+若要在日志中记录接口编码，你需要将接口编码传递到请求头：
+
+```python
+# coding:utf-8
+import requests
+
+requests.get(..., headers={"Method-Code": "<method_code>"})
+```
 
 ## 详细配置
 
