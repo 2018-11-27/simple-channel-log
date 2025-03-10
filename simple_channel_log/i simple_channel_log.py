@@ -55,17 +55,17 @@ co_qualname = 'co_qualname' if sys.version_info >= (3, 11) else 'co_name'
 that = sys.modules[__package__]
 this = sys.modules[__name__]
 
-unique = object()
+deprecated = object()
 
 
 def __init__(
         appname,
-        syscode,
+        syscode=deprecated,
         logdir=r'C:\BllLogs' if sys.platform == 'win32' else '/app/logs',
         when='D',
         interval=1,
         backup_count=7,
-        stream=unique,
+        stream=deprecated,
         output_to_terminal=None,
         enable_journallog_in=False,
         enable_journallog_out=False
@@ -73,16 +73,17 @@ def __init__(
     if hasattr(this, 'appname'):
         raise RuntimeError('repeat initialization.')
 
-    if re.match(r'[A-Za-z]\d{9}$', syscode) is None:
-        raise ValueError('parameter syscode "%s" is illegal' % syscode)
-
     prefix = re.match(r'[a-zA-Z]\d{9}[_-]', appname)
     if prefix is None:
-        appname = syscode.lower() + '_' + appname
-    elif prefix.group()[:-1].upper() != syscode.upper():
-        raise ValueError('parameter appname "%s" is illegal' % syscode)
+        raise ValueError('parameter appname "%s" is illegal.' % appname)
 
-    if stream is not unique:
+    if syscode is not deprecated:
+        warnings.warn(
+            'parameter "syscode" is deprecated.',
+            category=DeprecationWarning, stacklevel=2
+        )
+
+    if stream is not deprecated:
         warnings.warn(
             'parameter "stream" will be deprecated soon, replaced to '
             '"output_to_terminal".', category=DeprecationWarning,
@@ -92,15 +93,17 @@ def __init__(
             output_to_terminal = stream
 
     that.appname = this.appname = appname = \
-        appname[0].lower() + appname[1:10] + '_' + appname[11:]
-    that.syscode = this.syscode = syscode.upper()
+        appname[0].lower() + appname[1:].replace('-', '_')
+    that.syscode = this.syscode = prefix.group()[:-1].upper()
     this.output_to_terminal = output_to_terminal
+
+    if sys.platform == 'win32':
+        logdir = os.path.join(logdir, appname)
 
     handlers = [{
         'name': 'TimedRotatingFileHandler',
         'level': 'DEBUG',
-        'filename': '%s/%s/debug/%s_code-debug.log' %
-                    (logdir, appname, appname),
+        'filename': '%s/debug/%s_code-debug.log' % (logdir, appname),
         'encoding': 'UTF-8',
         'when': when,
         'interval': interval,
@@ -112,8 +115,7 @@ def __init__(
         handlers.append({
             'name': 'TimedRotatingFileHandler',
             'level': level.upper(),
-            'filename': '%s/%s/%s_code-%s.log' %
-                        (logdir, appname, appname, level),
+            'filename': '%s/%s_code-%s.log' % (logdir, appname, level),
             'encoding': 'UTF-8',
             'when': when,
             'interval': interval,
@@ -152,8 +154,7 @@ def __init__(
             handlers=[{
                 'name': 'TimedRotatingFileHandler',
                 'level': 'INFO',
-                'filename': '%s/%s/%s_info-info.log' %
-                            (logdir, appname, appname),
+                'filename': '%s/%s_info-info.log' % (logdir, appname),
                 'encoding': 'UTF-8',
                 'when': when,
                 'interval': interval,
@@ -167,8 +168,7 @@ def __init__(
         handlers=[{
             'name': 'TimedRotatingFileHandler',
             'level': 'DEBUG',
-            'filename': '%s/%s/trace/%s_trace-trace.log' %
-                        (logdir, appname, appname),
+            'filename': '%s/trace/%s_trace-trace.log' % (logdir, appname),
             'encoding': 'UTF-8',
             'when': when,
             'interval': interval,

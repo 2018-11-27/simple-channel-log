@@ -32,7 +32,7 @@ pip install simple_channel_log
 import simple_channel_log as log
 
 # 初始化日志配置
-log.__init__("<your_appname>", "<your_syscode>", logdir="/app/logs")
+log.__init__("<your_appname>", logdir="/app/logs")
 
 # 初始化后可直接调用日志方法，日志将记录到参数 `logdir` 指定的目录中
 log.debug("调试信息", extra_field="value")
@@ -78,8 +78,7 @@ log.__init__(..., enable_journallog_out=True)
 
 | 参数名                   | 类型   | 默认值      | 说明                            |
 |-----------------------|------|----------|-------------------------------|
-| appname               | str  | 必填       | 应用名称，建议与CI配置一致                |
-| syscode               | str  | 必填       | 系统编码（大写）                      |
+| appname               | str  | 必填       | 应用名称，以服务编码开头                  |
 | logdir                | str  | 系统相关默认路径 | 日志存储根目录                       |
 | when                  | str  | 'D'      | 轮转周期：W(周)/D(天)/H(时)/M(分)/S(秒) |
 | interval              | int  | 1        | 轮转频率                          |
