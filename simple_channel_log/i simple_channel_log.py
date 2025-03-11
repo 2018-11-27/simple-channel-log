@@ -233,8 +233,16 @@ def logger(msg, *args, **extra):
     }
 
     for k, v in extra.items():
-        if data.get(k) is None:
-            data[k] = v
+        if data.get(k) is not None:
+            continue
+        if sys.version_info.major < 3 and isinstance(v, dict):
+            for kk in v.copy():
+                if isinstance(kk, str):
+                    v[kk.decode('utf8')] = v.pop(kk)
+        try:
+            data[k] = jsonx.dumps(v, ensure_ascii=False)
+        except ValueError:
+            data[k] = str(v)
 
     getattr(glog, level)(jsonx.dumps(data, ensure_ascii=False), gname='code')
 
@@ -340,40 +348,51 @@ def journallog_in(response):
             account_num = x.get('account_num')
             response_account_type = x.get('response_account_type')
             response_account_num = x.get('response_account_num')
+            if response_code is not None:
+                response_code = str(response_code)
         else:
             response_code = order_id = \
                 province_code = city_code = \
                 account_type = account_num = \
                 response_account_type = response_account_num = None
 
+    request_headers_str = jsonx.dumps(g.request_headers, ensure_ascii=False)
+    request_payload_str = \
+        jsonx.dumps(OmitLongString(g.request_data), ensure_ascii=False)
+    response_headers_str = \
+        jsonx.dumps(dict(response.headers), ensure_ascii=False)
+    response_payload_str = \
+        jsonx.dumps(OmitLongString(response_data), ensure_ascii=False)
+
     response_time = datetime.now()
     response_time_str = response_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
-    total_time = int(round((response_time - g.request_time).total_seconds()))
+    total_time = \
+        int(round((response_time - g.request_time).total_seconds() * 1000))
 
     glog.info(jsonx.dumps({
         'app_name': this.appname + '_info',
         'level': 'INFO',
         'log_time': response_time_str,
         'logger': __package__,
-        'thread': threading.current_thread().ident,
+        'thread': str(threading.current_thread().ident),
         'transaction_id': g.transaction_id,
         'dialog_type': 'in',
         'address': address,
-        'fcode': request.headers.get('User-Agent'),
+        'fcode': FindData(g.request_headers, 'User-Agent').result,
         'tcode': this.syscode,
         'method_code': method_code,
         'method_name': method_name,
         'http_method': request.method,
         'request_time': g.request_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
-        'request_headers': g.request_headers,
-        'request_payload': OmitLongString(g.request_data),
+        'request_headers': request_headers_str,
+        'request_payload': request_payload_str,
         'response_time': response_time_str,
-        'response_headers': dict(response.headers),
-        'response_payload': OmitLongString(response_data),
+        'response_headers': response_headers_str,
+        'response_payload': response_payload_str,
         'response_code': response_code,
         'response_remark': None,
-        'http_status_code': response.status_code,
+        'http_status_code': str(response.status_code),
         'order_id': order_id,
         'province_code': province_code,
         'city_code': city_code,
@@ -478,20 +497,32 @@ def journallog_out(func):
                 account_num = x.get('account_num')
                 response_account_type = x.get('response_account_type')
                 response_account_num = x.get('response_account_num')
+                if response_code is not None:
+                    response_code = str(response_code)
             else:
                 response_code = order_id = \
                     province_code = city_code = \
                     account_type = account_num = \
                     response_account_type = response_account_num = None
 
-        total_time = int(round((response_time - request_time).total_seconds()))
+        request_headers_str = \
+            jsonx.dumps(dict(response.request.headers), ensure_ascii=False)
+        request_payload_str = \
+            jsonx.dumps(OmitLongString(request_data), ensure_ascii=False)
+        response_headers_str = \
+            jsonx.dumps(dict(response.headers), ensure_ascii=False)
+        response_payload_str = \
+            jsonx.dumps(OmitLongString(response_data), ensure_ascii=False)
+
+        total_time = \
+            int(round((response_time - request_time).total_seconds() * 1000))
 
         glog.info(jsonx.dumps({
             'app_name': this.appname + '_info',
             'level': 'INFO',
             'log_time': response_time_str,
             'logger': __package__,
-            'thread': threading.current_thread().ident,
+            'thread': str(threading.current_thread().ident),
             'transaction_id': transaction_id,
             'dialog_type': 'out',
             'address': address,
@@ -501,14 +532,14 @@ def journallog_out(func):
             'method_name': method_name,
             'http_method': response.request.method,
             'request_time': request_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
-            'request_headers': dict(response.request.headers),
-            'request_payload': OmitLongString(request_data),
+            'request_headers': request_headers_str,
+            'request_payload': request_payload_str,
             'response_time': response_time_str,
-            'response_headers': dict(response.headers),
-            'response_payload': OmitLongString(response_data),
+            'response_headers': response_headers_str,
+            'response_payload': response_payload_str,
             'response_code': response_code,
             'response_remark': None,
-            'http_status_code': response.status_code,
+            'http_status_code': str(response.status_code),
             'order_id': order_id,
             'province_code': province_code,
             'city_code': city_code,
@@ -580,8 +611,8 @@ class DeleteKeys(dict):
         for k, v in data.items():
             if k.replace('-', '').replace('_', '').lower() == root.key:
                 result.append(k)
-            else:
-                dict.__setitem__(self, k, DeleteKeys(v, key=key, root=root))
+                continue
+            dict.__setitem__(self, k, DeleteKeys(v, key=key, root=root))
         for k in result:
             del data[k]
 
