@@ -26,15 +26,16 @@ else:
     from flask import current_app
     from flask import has_request_context
 
-    def wrap_flask_init_method(func):
-        @functools.wraps(func)
-        def inner(self, *a, **kw):
-            func(self, *a, **kw)
-            Flask.__apps__.append(self)
-        return inner
+    if not hasattr(Flask, '__apps__'):
+        def wrap_flask_init_method(func):
+            @functools.wraps(func)
+            def inner(self, *a, **kw):
+                func(self, *a, **kw)
+                Flask.__apps__.append(self)
+            return inner
 
-    Flask.__apps__ = []
-    Flask.__init__ = wrap_flask_init_method(Flask.__init__)
+        Flask.__apps__ = []
+        Flask.__init__ = wrap_flask_init_method(Flask.__init__)
 
 try:
     import requests
@@ -204,8 +205,8 @@ def logger(msg, *args, **extra):
         transaction_id = g.transaction_id
         method_code = (
             getattr(request, 'method_code', None) or
-            FindData(g.request_headers, 'Method-Code').result or
-            FindData(g.request_data, 'method_code').result
+            DictGet(g.request_headers, 'Method-Code').result or
+            DictGet(g.request_data, 'method_code').result
         )
     else:
         transaction_id = uuid.uuid4().hex
@@ -305,8 +306,8 @@ def journallog_in_before():
             request_data = None
 
     g.transaction_id = (
-        FindData(request_headers, 'Transaction-ID').result or
-        FindData(request_data, 'transaction_id').result or
+        DictGet(request_headers, 'Transaction-ID').result or
+        DictGet(request_data, 'transaction_id').result or
         uuid.uuid4().hex
     )
     g.request_headers = request_headers
@@ -322,8 +323,8 @@ def journallog_in(response):
 
     method_code = (
         getattr(request, 'method_code', None) or
-        FindData(g.request_headers, 'Method-Code').result or
-        FindData(g.request_data, 'method_code').result
+        DictGet(g.request_headers, 'Method-Code').result or
+        DictGet(g.request_data, 'method_code').result
     )
 
     view_func = current_app.view_functions.get(request.endpoint)
@@ -379,7 +380,7 @@ def journallog_in(response):
         'transaction_id': g.transaction_id,
         'dialog_type': 'in',
         'address': address,
-        'fcode': FindData(g.request_headers, 'User-Agent').result,
+        'fcode': DictGet(g.request_headers, 'User-Agent').result,
         'tcode': this.syscode,
         'method_code': method_code,
         'method_name': method_name,
@@ -424,7 +425,7 @@ def journallog_out(func):
         if headers is None:
             headers = {'User-Agent': this.syscode}
         else:
-            DeleteKeys(headers, 'User-Agent')
+            DictDelete(headers, 'User-Agent')
             headers['User-Agent'] = this.syscode
 
         f_back = inspect.currentframe().f_back.f_back
@@ -457,16 +458,16 @@ def journallog_out(func):
             transaction_id = g.transaction_id
         else:
             transaction_id = (
-                FindData(headers, 'Transaction-ID').result or
-                FindData(request_data, 'transaction_id').result or
+                DictGet(headers, 'Transaction-ID').result or
+                DictGet(request_data, 'transaction_id').result or
                 uuid.uuid4().hex
             )
-        DeleteKeys(headers, 'Transaction-ID')
+        DictDelete(headers, 'Transaction-ID')
         headers['Transaction-ID'] = transaction_id
 
         method_code = (
-            FindData(headers, 'Method-Code').result or
-            FindData(request_data, 'method_code').result
+            DictGet(headers, 'Method-Code').result or
+            DictGet(request_data, 'method_code').result
         )
 
         request_time = datetime.now()
@@ -580,7 +581,7 @@ class OmitLongString(dict):
         return data
 
 
-class FindData(dict):
+class DictGet(dict):
     result = None
 
     def __init__(self, data, key, root=None):
@@ -591,7 +592,7 @@ class FindData(dict):
             if k.replace('-', '').replace('_', '').lower() == root.key:
                 root.result = data[k]
                 break
-            dict.__setitem__(self, k, FindData(v, key=key, root=root))
+            dict.__setitem__(self, k, DictGet(v, key=key, root=root))
 
     def __new__(cls, data, *a, **kw):
         if isinstance(data, dict):
@@ -601,7 +602,7 @@ class FindData(dict):
         return cls
 
 
-class DeleteKeys(dict):
+class DictDelete(dict):
 
     def __init__(self, data, key, root=None):
         if root is None:
@@ -612,7 +613,7 @@ class DeleteKeys(dict):
             if k.replace('-', '').replace('_', '').lower() == root.key:
                 result.append(k)
                 continue
-            dict.__setitem__(self, k, DeleteKeys(v, key=key, root=root))
+            dict.__setitem__(self, k, DictDelete(v, key=key, root=root))
         for k in result:
             del data[k]
 
