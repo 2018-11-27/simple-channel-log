@@ -142,6 +142,7 @@ def __init__(
     if enable_journallog_in and Flask is not None:
         enable_journallog = True
         thread = threading.Thread(target=register_flask_middleware)
+        thread.name = 'register_flask_middleware'
         thread.daemon = True
         thread.start()
 
@@ -202,11 +203,14 @@ def logger(msg, *args, **extra):
         msg = OmitLongString(msg)
 
     if Flask is not None and has_request_context():
-        transaction_id = g.transaction_id
+        try:
+            transaction_id = g.__transaction_id__
+        except AttributeError:
+            raise RuntimeError('uninitialized.')
         method_code = (
             getattr(request, 'method_code', None) or
-            DictGet(g.request_headers, 'Method-Code').result or
-            DictGet(g.request_data, 'method_code').result
+            DictGet(g.__request_headers__, 'Method-Code').result or
+            DictGet(g.__request_data__, 'method_code').result
         )
     else:
         transaction_id = uuid.uuid4().hex
@@ -290,28 +294,31 @@ def journallog_in_before():
     if request.path == '/healthcheck':
         return
 
-    g.request_time = datetime.now()
+    if not hasattr(g, '__request_time__'):
+        g.__request_time__ = datetime.now()
 
-    request_headers = dict(request.headers)
+    if not hasattr(g, '__request_headers__'):
+        g.__request_headers__ = dict(request.headers)
 
-    if request.args:
-        request_data = request.args.to_dict()
-    elif request.form:
-        request_data = request.form.to_dict()
-    else:
-        request_body = request.data
-        try:
-            request_data = jsonx.loads(request_body) if request_body else None
-        except ValueError:
-            request_data = None
+    if not hasattr(g, '__request_data__'):
+        if request.args:
+            request_data = request.args.to_dict()
+        elif request.form:
+            request_data = request.form.to_dict()
+        else:
+            request_body = request.data
+            try:
+                request_data = jsonx.loads(request_body) \
+                    if request_body else None
+            except ValueError:
+                request_data = None
+        g.__request_data__ = request_data
 
-    g.transaction_id = (
-        DictGet(request_headers, 'Transaction-ID').result or
-        DictGet(request_data, 'transaction_id').result or
+    g.__transaction_id__ = (
+        DictGet(g.__request_headers__, 'Transaction-ID').result or
+        DictGet(g.__request_data__, 'transaction_id').result or
         uuid.uuid4().hex
     )
-    g.request_headers = request_headers
-    g.request_data = request_data
 
 
 def journallog_in(response):
@@ -323,8 +330,8 @@ def journallog_in(response):
 
     method_code = (
         getattr(request, 'method_code', None) or
-        DictGet(g.request_headers, 'Method-Code').result or
-        DictGet(g.request_data, 'method_code').result
+        DictGet(g.__request_headers__, 'Method-Code').result or
+        DictGet(g.__request_data__, 'method_code').result
     )
 
     view_func = current_app.view_functions.get(request.endpoint)
@@ -357,19 +364,21 @@ def journallog_in(response):
                 account_type = account_num = \
                 response_account_type = response_account_num = None
 
-    request_headers_str = jsonx.dumps(g.request_headers, ensure_ascii=False)
+    request_headers_str = jsonx.dumps(g.__request_headers__, ensure_ascii=False)
     request_payload_str = \
-        jsonx.dumps(OmitLongString(g.request_data), ensure_ascii=False)
+        jsonx.dumps(OmitLongString(g.__request_data__), ensure_ascii=False)
     response_headers_str = \
         jsonx.dumps(dict(response.headers), ensure_ascii=False)
     response_payload_str = \
         jsonx.dumps(OmitLongString(response_data), ensure_ascii=False)
 
+    request_time_str = g.__request_time__.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
     response_time = datetime.now()
     response_time_str = response_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
     total_time = \
-        int(round((response_time - g.request_time).total_seconds() * 1000))
+        int(round((response_time - g.__request_time__).total_seconds() * 1000))
 
     glog.info(jsonx.dumps({
         'app_name': this.appname + '_info',
@@ -377,15 +386,15 @@ def journallog_in(response):
         'log_time': response_time_str,
         'logger': __package__,
         'thread': str(threading.current_thread().ident),
-        'transaction_id': g.transaction_id,
+        'transaction_id': g.__transaction_id__,
         'dialog_type': 'in',
         'address': address,
-        'fcode': DictGet(g.request_headers, 'User-Agent').result,
+        'fcode': DictGet(g.__request_headers__, 'User-Agent').result,
         'tcode': this.syscode,
         'method_code': method_code,
         'method_name': method_name,
         'http_method': request.method,
-        'request_time': g.request_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
+        'request_time': request_time_str,
         'request_headers': request_headers_str,
         'request_payload': request_payload_str,
         'response_time': response_time_str,
@@ -428,11 +437,6 @@ def journallog_out(func):
             DictDelete(headers, 'User-Agent')
             headers['User-Agent'] = this.syscode
 
-        f_back = inspect.currentframe().f_back.f_back
-        if f_back.f_back is not None:
-            f_back = f_back.f_back
-        method_name = getattr(f_back.f_code, co_qualname)
-
         parse_url = urlparse(url)
         address = parse_url.scheme + '://' + parse_url.netloc + parse_url.path
         query_string = {k: v[0] for k, v in parse_qs(parse_url.query).items()}
@@ -455,7 +459,7 @@ def journallog_out(func):
             request_data = None
 
         if Flask is not None and has_request_context():
-            transaction_id = g.transaction_id
+            transaction_id = g.__transaction_id__
         else:
             transaction_id = (
                 DictGet(headers, 'Transaction-ID').result or
@@ -469,6 +473,13 @@ def journallog_out(func):
             DictGet(headers, 'Method-Code').result or
             DictGet(request_data, 'method_code').result
         )
+
+        method_name = DictGet(headers, 'Method-Code').result
+        if method_name is None:
+            f_back = inspect.currentframe().f_back.f_back
+            if f_back.f_back is not None:
+                f_back = f_back.f_back
+            method_name = getattr(f_back.f_code, co_qualname)
 
         request_time = datetime.now()
         response = func(
@@ -560,6 +571,7 @@ def journallog_out(func):
 
         return response
 
+    inner.__wrapped__ = func
     return inner
 
 
