@@ -1,15 +1,14 @@
 # coding:utf-8
+from typing import Optional
 
 
 def __init__(
         appname,                     # type: str
-        logdir               =None,  # type: str
-        when                 =None,  # type: str
-        interval             =None,  # type: int
-        backup_count         =None,  # type: int
-        output_to_terminal   =None,  # type: bool
-        enable_journallog_in =None,  # type: bool
-        enable_journallog_out=None   # type: bool
+        logdir               =None,  # type: Optional[str]
+        when                 =None,  # type: Optional[str]
+        interval             =None,  # type: Optional[int]
+        backup_count         =None,  # type: Optional[int]
+        output_to_terminal   =None,  # type: Optional[bool]
 ):
     """
     初始化日志配置。
@@ -29,10 +28,6 @@ def __init__(
         日志保留策略，控制最大历史版本数量，默认为 7。设为 0 则永久保留。
     @param output_to_terminal:
         设为 True 日志将同时输出到终端，默认为 False。流水日志和埋点日志除外。
-    @param enable_journallog_in:
-        设为 True 表示启用内部流水日志，默认为 False。目前仅支持 Flask 框架。
-    @param enable_journallog_out:
-        设为 True 表示启用外部流水日志，默认为 False。目前仅支持 requests 框架。
     """
 
 

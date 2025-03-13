@@ -68,8 +68,8 @@ def __init__(
         backup_count=7,
         stream=deprecated,
         output_to_terminal=None,
-        enable_journallog_in=False,
-        enable_journallog_out=False
+        enable_journallog_in=deprecated,
+        enable_journallog_out=deprecated
 ):
     if hasattr(this, 'appname'):
         raise RuntimeError('repeat initialization.')
@@ -83,7 +83,16 @@ def __init__(
             'parameter "syscode" is deprecated.',
             category=DeprecationWarning, stacklevel=2
         )
-
+    if enable_journallog_in is not deprecated:
+        warnings.warn(
+            'parameter "enable_journallog_in" is deprecated.',
+            category=DeprecationWarning, stacklevel=2
+        )
+    if enable_journallog_out is not deprecated:
+        warnings.warn(
+            'parameter "enable_journallog_out" is deprecated.',
+            category=DeprecationWarning, stacklevel=2
+        )
     if stream is not deprecated:
         warnings.warn(
             'parameter "stream" will be deprecated soon, replaced to '
@@ -137,20 +146,16 @@ def __init__(
             gname='stream'
         )
 
-    enable_journallog = False
-
-    if enable_journallog_in and Flask is not None:
-        enable_journallog = True
-        thread = threading.Thread(target=register_flask_middleware)
-        thread.name = 'register_flask_middleware'
+    if Flask is not None:
+        thread = threading.Thread(target=register_flask_journallog)
+        thread.name = 'RegisterFlaskJournallog'
         thread.daemon = True
         thread.start()
 
-    if enable_journallog_out and requests is not None:
-        enable_journallog = True
+    if requests is not None:
         requests.Session.request = journallog_out(requests.Session.request)
 
-    if enable_journallog:
+    if not (Flask is None and requests is None):
         glog.__init__(
             'info',
             handlers=[{
@@ -180,7 +185,7 @@ def __init__(
     )
 
 
-def register_flask_middleware():
+def register_flask_journallog():
     start = time.time()
     while not Flask.__apps__ and time.time() - start < 300:
         time.sleep(.01)
@@ -191,6 +196,11 @@ def register_flask_middleware():
 
 
 def logger(msg, *args, **extra):
+    try:
+        app_name = this.appname + '_code'
+    except AttributeError:
+        raise RuntimeError('uninitialized.')
+
     args = tuple(OmitLongString(v) for v in args)
     extra = OmitLongString(extra)
 
@@ -203,10 +213,7 @@ def logger(msg, *args, **extra):
         msg = OmitLongString(msg)
 
     if Flask is not None and has_request_context():
-        try:
-            transaction_id = g.__transaction_id__
-        except AttributeError:
-            raise RuntimeError('uninitialized.')
+        transaction_id = g.__transaction_id__
         method_code = (
             getattr(request, 'method_code', None) or
             DictGet(g.__request_headers__, 'Method-Code').result or
@@ -221,7 +228,7 @@ def logger(msg, *args, **extra):
     f_back = f_back.f_back
 
     data = {
-        'app_name': this.appname + '_code',
+        'app_name': app_name,
         'level': level.upper(),
         'log_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
         'logger': __package__,
@@ -327,7 +334,6 @@ def journallog_in(response):
 
     parsed_url = urlparse(request.url)
     address = parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path
-
     method_code = (
         getattr(request, 'method_code', None) or
         DictGet(g.__request_headers__, 'Method-Code').result or
