@@ -201,15 +201,16 @@ def logger(msg, *args, **extra):
     except AttributeError:
         raise RuntimeError('uninitialized.')
 
-    msg = msg[:1000]
     args = tuple(OmitLongString(v) for v in args)
     extra = OmitLongString(extra)
 
     if sys.version_info.major < 3 and isinstance(msg, str):
         msg = msg.decode('utf8')
 
-    if isinstance(msg, unicode) and args:
-        msg = msg % args
+    if isinstance(msg, unicode):
+        msg = msg[:1000]
+        if args:
+            msg = msg % args
     elif isinstance(msg, (dict, list, tuple)):
         msg = OmitLongString(msg)
 
