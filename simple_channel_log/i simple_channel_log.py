@@ -338,8 +338,8 @@ def journallog_in(response):
 
     fcode = DictGet(g.__request_headers__, 'User-Agent').result
 
-    if isinstance(fcode, (str, unicode)) and len(fcode) > 20:
-        fcode = fcode[:20] + '...'
+    if not (fcode is None or is_syscode(fcode)):
+        fcode = None
 
     method_code = (
         getattr(request, 'method_code', None) or
@@ -648,3 +648,7 @@ class DictDelete(dict):
         if isinstance(data, (list, tuple)):
             return data.__class__(cls(v, *a, **kw) for v in data)
         return cls
+
+
+def is_syscode(x):
+    return len(x) == 10 and x[0].isalpha() and x[1:].isdigit()
