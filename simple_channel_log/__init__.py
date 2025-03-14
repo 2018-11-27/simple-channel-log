@@ -14,7 +14,7 @@ def __init__(
     初始化日志配置。
 
     @param appname:
-        你的应用名称，以服务编码开头。
+        你的应用名称，以服务编码开头（小写），以下划线拼接。
     @param logdir:
         指定日志目录，默认为 "/app/logs"（如果你的系统是 Windows 则默认为
         "C:\\BllLogs\\<appname>"）。
@@ -25,9 +25,9 @@ def __init__(
         日志轮转频率，默认为 1 。同参数 `when` 一起使用（如：`when="D"` 且
         `interval=1` 表示每天滚动一次）。
     @param backup_count:
-        日志保留策略，控制最大历史版本数量，默认为 7。设为 0 则永久保留。
+        日志保留策略，控制最大历史版本数量，默认为 7。设为 0 表示永久保留。
     @param output_to_terminal:
-        设为 True 日志将同时输出到终端，默认为 False。流水日志和埋点日志除外。
+        设为 True 日志（简要信息）将同时输出到终端，默认为 False。流水日志和埋点日志除外。
     """
 
 

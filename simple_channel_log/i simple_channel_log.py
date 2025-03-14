@@ -201,14 +201,15 @@ def logger(msg, *args, **extra):
     except AttributeError:
         raise RuntimeError('uninitialized.')
 
+    msg = msg[:1000]
     args = tuple(OmitLongString(v) for v in args)
     extra = OmitLongString(extra)
 
     if sys.version_info.major < 3 and isinstance(msg, str):
         msg = msg.decode('utf8')
 
-    if isinstance(msg, unicode):
-        msg = (msg % args)[:1000]
+    if isinstance(msg, unicode) and args:
+        msg = msg % args
     elif isinstance(msg, (dict, list, tuple)):
         msg = OmitLongString(msg)
 
@@ -334,6 +335,12 @@ def journallog_in(response):
 
     parsed_url = urlparse(request.url)
     address = parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path
+
+    fcode = DictGet(g.__request_headers__, 'User-Agent').result
+
+    if isinstance(fcode, (str, unicode)) and len(fcode) > 20:
+        fcode = fcode[:20] + '...'
+
     method_code = (
         getattr(request, 'method_code', None) or
         DictGet(g.__request_headers__, 'Method-Code').result or
@@ -395,7 +402,7 @@ def journallog_in(response):
         'transaction_id': g.__transaction_id__,
         'dialog_type': 'in',
         'address': address,
-        'fcode': DictGet(g.__request_headers__, 'User-Agent').result,
+        'fcode': fcode,
         'tcode': this.syscode,
         'method_code': method_code,
         'method_name': method_name,
@@ -480,7 +487,7 @@ def journallog_out(func):
             DictGet(request_data, 'method_code').result
         )
 
-        method_name = DictGet(headers, 'Method-Code').result
+        method_name = DictGet(headers, 'Method-Name').result
         if method_name is None:
             f_back = inspect.currentframe().f_back.f_back
             if f_back.f_back is not None:
