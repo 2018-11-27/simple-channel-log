@@ -209,8 +209,10 @@ def logger(msg, *args, **extra):
 
     if isinstance(msg, unicode):
         msg = msg[:1000]
-        if args:
+        try:
             msg = msg % args
+        except TypeError:
+            pass
     elif isinstance(msg, (dict, list, tuple)):
         msg = OmitLongString(msg)
 
