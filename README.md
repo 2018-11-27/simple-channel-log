@@ -50,62 +50,64 @@ log.trace(
 
 ### Flask 流水日志
 
-```python
-# coding:utf-8
-import simple_channel_log as log
-
-# 初始化日志配置
-log.__init__(..., enable_journallog_in=True)
-```
-
-设置 `enable_journallog_in=True` 表示启用 Flask 流水日志，将自动记录每个接口的调用信息。
-
-若要在日志中记录接口编码，你需要将接口编码传递给请求对象 `flask.request`：
+导入 `Flask` 库并初始化 `simple_channel_log` 即自动启用 Flask 流水日志，将自动记录每个接口的调用信息。
 
 ```python
 # coding:utf-8
-from flask import request
+import simple_channel_log
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
 
 @app.get("/index")
 def index():
-    request.method_code = "<method_code>"  # 将接口编码传递给请求对象
+    # 若要在日志中记录接口编码，你需要将接口编码传递给请求对象
+    # request.method_code = "<method_code>"
     return jsonify({"msg": "ok"})
+
+
+if __name__ == '__main__':
+    # 初始化日志配置
+    simple_channel_log.__init__("<your_appname>")
+
+    # 启动后访问接口将自动记录流水日志
+    app.run()
 ```
 
-如果调用方已经将接口编码传递到请求头 `request.headers["Method-Code"]`，则会自动获取。
+如果调用方已经将接口编码传递到请求头 `request.headers["Method-Code"]`，则会自动获取（优先级低）。
 
 ### Requests 外部调用追踪
 
-```python
-# coding:utf-8
-import simple_channel_log as log
-
-# 初始化日志配置
-log.__init__(..., enable_journallog_out=True)
-```
-
-设置 `enable_journallog_out=True` 表示启用 Requests 外部调用追踪，将自动记录每个请求的调用信息。
-
-若要在日志中记录接口编码，你需要将接口编码传递到请求头：
+导入 `Requests` 库并初始化 `simple_channel_log` 即自动启用 Requests 外部调用追踪，将自动记录每个请求的调用信息。
 
 ```python
 # coding:utf-8
 import requests
+import simple_channel_log
 
-requests.get(..., headers={"Method-Code": "<method_code>"})
+# 初始化日志配置
+simple_channel_log.__init__("<your_appname>")
+
+# 发起请求后将自动记录外部流水日志
+r = requests.get(
+    'http://gqylpy.com/index',
+    headers={
+        # 若要在日志中记录接口编码，你需要将接口编码传递到请求头
+        # "Method-Code": "<method_code>"
+    }
+)
 ```
 
 ## 详细配置
 
 ### 初始化参数
 
-| 参数名                   | 类型   | 默认值      | 说明                            |
-|-----------------------|------|----------|-------------------------------|
-| appname               | str  | 必填       | 应用名称，以服务编码开头                  |
-| logdir                | str  | 系统相关默认路径 | 日志存储根目录                       |
-| when                  | str  | 'D'      | 轮转周期：W(周)/D(天)/H(时)/M(分)/S(秒) |
-| interval              | int  | 1        | 轮转频率                          |
-| backup_count          | int  | 7        | 历史日志保留数量（0=永久）                |
-| output_to_terminal    | bool | False    | 启用后日志将同时输出到控制台                |
-| enable_journallog_in  | bool | False    | 启用Flask请求流水日志                 |
-| enable_journallog_out | bool | False    | 启用Requests外部调用日志              |
+| 参数名                | 类型   | 默认值      | 说明                            |
+|--------------------|------|----------|-------------------------------|
+| appname            | str  | 必填       | 应用名称，以服务编码开头                  |
+| logdir             | str  | 系统相关默认路径 | 日志存储根目录                       |
+| when               | str  | 'D'      | 轮转周期：W(周)/D(天)/H(时)/M(分)/S(秒) |
+| interval           | int  | 1        | 轮转频率                          |
+| backup_count       | int  | 7        | 历史日志保留数量（0=永久）                |
+| output_to_terminal | bool | False    | 启用后日志将同时输出到控制台                |
