@@ -2,7 +2,6 @@
 import os
 import re
 import sys
-import time
 import uuid
 import json as jsonx
 import socket
@@ -21,21 +20,37 @@ try:
 except ImportError:
     Flask = None
 else:
-    from flask import g
-    from flask import request
-    from flask import current_app
-    from flask import has_request_context
+    from flask import g, request, current_app, has_request_context
 
-    if not hasattr(Flask, '__apps__'):
-        def wrap_flask_init_method(func):
-            @functools.wraps(func)
-            def inner(self, *a, **kw):
-                func(self, *a, **kw)
-                Flask.__apps__.append(self)
-            return inner
+    def wrap_flask_init_method(func):
+        @functools.wraps(func)
+        def inner(self, *a, **kw):
+            func(self, *a, **kw)
+            self.before_request(journallog_in_before)
+            self.after_request(journallog_in)
+        inner.__wrapped__ = func
+        return inner
 
-        Flask.__apps__ = []
-        Flask.__init__ = wrap_flask_init_method(Flask.__init__)
+    Flask.__init__ = wrap_flask_init_method(Flask.__init__)
+
+try:
+    from fastapi import FastAPI
+except ImportError:
+    FastAPI = None
+else:
+    fastapi_journallog_middleware = __import__(
+        __package__ + '.i fastapi_journallog', fromlist=os
+    ).JournallogMiddleware
+
+    def wrap_fastapi_init_method(func):
+        @functools.wraps(func)
+        def inner(self, *a, **kw):
+            func(self, *a, **kw)
+            self.add_middleware(fastapi_journallog_middleware)
+        inner.__wrapped__ = func
+        return inner
+
+    FastAPI.__init__ = wrap_fastapi_init_method(FastAPI.__init__)
 
 try:
     import requests
@@ -43,13 +58,11 @@ except ImportError:
     requests = None
 
 if sys.version_info.major < 3:
-    from urlparse import urlparse
-    from urlparse import parse_qs
+    from urlparse import urlparse, parse_qs
+    is_char = lambda x: isinstance(x, (str, unicode))
 else:
-    from urllib.parse import urlparse
-    from urllib.parse import parse_qs
-
-    unicode = str
+    from urllib.parse import urlparse, parse_qs
+    is_char = lambda x: isinstance(x, str)
 
 co_qualname = 'co_qualname' if sys.version_info >= (3, 11) else 'co_name'
 
@@ -72,7 +85,7 @@ def __init__(
         enable_journallog_out=deprecated
 ):
     if hasattr(this, 'appname'):
-        raise RuntimeError('repeat initialization.')
+        return
 
     prefix = re.match(r'[a-zA-Z]\d{9}[_-]', appname)
     if prefix is None:
@@ -102,9 +115,11 @@ def __init__(
         if output_to_terminal is None:
             output_to_terminal = stream
 
-    that.appname = this.appname = appname = \
-        appname[0].lower() + appname[1:].replace('-', '_')
-    that.syscode = this.syscode = prefix.group()[:-1].upper()
+    appname = appname[0].lower() + appname[1:].replace('-', '_')
+    syscode = prefix.group()[:-1].upper()
+
+    that.appname = this.appname = appname
+    that.syscode = this.syscode = syscode
     this.output_to_terminal = output_to_terminal
 
     if sys.platform == 'win32':
@@ -146,16 +161,14 @@ def __init__(
             gname='stream'
         )
 
-    if Flask is not None:
-        thread = threading.Thread(target=register_flask_journallog)
-        thread.name = 'RegisterFlaskJournallog'
-        thread.daemon = True
-        thread.start()
+    if FastAPI is not None:
+        fastapi_journallog_middleware.appname = appname
+        fastapi_journallog_middleware.syscode = syscode
 
     if requests is not None:
         requests.Session.request = journallog_out(requests.Session.request)
 
-    if not (Flask is None and requests is None):
+    if Flask or FastAPI or requests:
         glog.__init__(
             'info',
             handlers=[{
@@ -185,16 +198,6 @@ def __init__(
     )
 
 
-def register_flask_journallog():
-    start = time.time()
-    while not Flask.__apps__ and time.time() - start < 300:
-        time.sleep(.01)
-
-    for app in Flask.__apps__:
-        app.before_request(journallog_in_before)
-        app.after_request(journallog_in)
-
-
 def logger(msg, *args, **extra):
     try:
         app_name = this.appname + '_code'
@@ -205,9 +208,9 @@ def logger(msg, *args, **extra):
     extra = OmitLongString(extra)
 
     if sys.version_info.major < 3 and isinstance(msg, str):
-        msg = msg.decode('utf8')
+        msg = msg.decode('UTF-8')
 
-    if isinstance(msg, unicode):
+    if is_char(msg):
         msg = msg[:1000]
         try:
             msg = msg % args
@@ -216,12 +219,20 @@ def logger(msg, *args, **extra):
     elif isinstance(msg, (dict, list, tuple)):
         msg = OmitLongString(msg)
 
-    if Flask is not None and has_request_context():
+    if has_flask_request_context():
         transaction_id = g.__transaction_id__
         method_code = (
             getattr(request, 'method_code', None) or
-            DictGet(g.__request_headers__, 'Method-Code').result or
-            DictGet(g.__request_data__, 'method_code').result
+            FuzzyGet(g.__request_headers__, 'Method-Code').result or
+            FuzzyGet(g.__request_data__, 'method_code').result
+        )
+    elif has_fastapi_request_context():
+        state = glog.fastapi_request.state
+        transaction_id = state.__transaction_id__
+        method_code = (
+            getattr(state, 'method_code', None) or
+            FuzzyGet(state.__request_headers__, 'Method-Code').result or
+            FuzzyGet(state.__request_data__, 'method_code').result
         )
     else:
         transaction_id = uuid.uuid4().hex
@@ -254,7 +265,7 @@ def logger(msg, *args, **extra):
         if sys.version_info.major < 3 and isinstance(v, dict):
             for kk in v.copy():
                 if isinstance(kk, str):
-                    v[kk.decode('utf8')] = v.pop(kk)
+                    v[kk.decode('UTF-8')] = v.pop(kk)
         try:
             data[k] = jsonx.dumps(v, ensure_ascii=False)
         except ValueError:
@@ -326,8 +337,8 @@ def journallog_in_before():
         g.__request_data__ = request_data
 
     g.__transaction_id__ = (
-        DictGet(g.__request_headers__, 'Transaction-ID').result or
-        DictGet(g.__request_data__, 'transaction_id').result or
+        FuzzyGet(g.__request_headers__, 'Transaction-ID').result or
+        FuzzyGet(g.__request_data__, 'transaction_id').result or
         uuid.uuid4().hex
     )
 
@@ -339,15 +350,14 @@ def journallog_in(response):
     parsed_url = urlparse(request.url)
     address = parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path
 
-    fcode = DictGet(g.__request_headers__, 'User-Agent').result
-
+    fcode = FuzzyGet(g.__request_headers__, 'User-Agent').result
     if not (fcode is None or is_syscode(fcode)):
         fcode = None
 
     method_code = (
         getattr(request, 'method_code', None) or
-        DictGet(g.__request_headers__, 'Method-Code').result or
-        DictGet(g.__request_data__, 'method_code').result
+        FuzzyGet(g.__request_headers__, 'Method-Code').result or
+        FuzzyGet(g.__request_data__, 'method_code').result
     )
 
     view_func = current_app.view_functions.get(request.endpoint)
@@ -450,7 +460,7 @@ def journallog_out(func):
         if headers is None:
             headers = {'User-Agent': this.syscode}
         else:
-            DictDelete(headers, 'User-Agent')
+            FullDelete(headers, 'User-Agent')
             headers['User-Agent'] = this.syscode
 
         parse_url = urlparse(url)
@@ -464,7 +474,7 @@ def journallog_out(func):
             request_data = query_string
         elif data:
             request_data = data
-            if isinstance(request_data, (str, unicode)):
+            if is_char(request_data):
                 try:
                     request_data = jsonx.loads(request_data)
                 except ValueError:
@@ -474,23 +484,25 @@ def journallog_out(func):
         else:
             request_data = None
 
-        if Flask is not None and has_request_context():
+        if has_flask_request_context():
             transaction_id = g.__transaction_id__
+        elif has_fastapi_request_context():
+            transaction_id = glog.fastapi_request.state.__transaction_id__
         else:
             transaction_id = (
-                DictGet(headers, 'Transaction-ID').result or
-                DictGet(request_data, 'transaction_id').result or
+                FuzzyGet(headers, 'Transaction-ID').result or
+                FuzzyGet(request_data, 'transaction_id').result or
                 uuid.uuid4().hex
             )
-        DictDelete(headers, 'Transaction-ID')
+        FullDelete(headers, 'Transaction-ID')
         headers['Transaction-ID'] = transaction_id
 
         method_code = (
-            DictGet(headers, 'Method-Code').result or
-            DictGet(request_data, 'method_code').result
+            FuzzyGet(headers, 'Method-Code').result or
+            FuzzyGet(request_data, 'method_code').result
         )
 
-        method_name = DictGet(headers, 'Method-Name').result
+        method_name = FuzzyGet(headers, 'Method-Name').result
         if method_name is None:
             f_back = inspect.currentframe().f_back.f_back
             if f_back.f_back is not None:
@@ -603,13 +615,13 @@ class OmitLongString(dict):
         if isinstance(data, (list, tuple)):
             return data.__class__(cls(v) for v in data)
         if sys.version_info.major < 3 and isinstance(data, str):
-            data = data.decode('utf8')
-        if isinstance(data, (unicode, str)) and len(data) > 1000:
+            data = data.decode('UTF-8')
+        if is_char(data) and len(data) > 1000:
             data = '<Ellipsis>'
         return data
 
 
-class DictGet(dict):
+class FuzzyGet(dict):
     result = None
 
     def __init__(self, data, key, root=None):
@@ -620,7 +632,7 @@ class DictGet(dict):
             if k.replace('-', '').replace('_', '').lower() == root.key:
                 root.result = data[k]
                 break
-            dict.__setitem__(self, k, DictGet(v, key=key, root=root))
+            dict.__setitem__(self, k, FuzzyGet(v, key=key, root=root))
 
     def __new__(cls, data, *a, **kw):
         if isinstance(data, dict):
@@ -630,7 +642,7 @@ class DictGet(dict):
         return cls
 
 
-class DictDelete(dict):
+class FullDelete(dict):
 
     def __init__(self, data, key, root=None):
         if root is None:
@@ -641,7 +653,7 @@ class DictDelete(dict):
             if k.replace('-', '').replace('_', '').lower() == root.key:
                 result.append(k)
                 continue
-            dict.__setitem__(self, k, DictDelete(v, key=key, root=root))
+            dict.__setitem__(self, k, FullDelete(v, key=key, root=root))
         for k in result:
             del data[k]
 
@@ -655,3 +667,11 @@ class DictDelete(dict):
 
 def is_syscode(x):
     return len(x) == 10 and x[0].isalpha() and x[1:].isdigit()
+
+
+def has_flask_request_context():
+    return Flask is not None and has_request_context()
+
+
+def has_fastapi_request_context():
+    return FastAPI is not None and hasattr(glog, 'fastapi_request')

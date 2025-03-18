@@ -3,12 +3,12 @@ from typing import Optional
 
 
 def __init__(
-        appname,                     # type: str
-        logdir               =None,  # type: Optional[str]
-        when                 =None,  # type: Optional[str]
-        interval             =None,  # type: Optional[int]
-        backup_count         =None,  # type: Optional[int]
-        output_to_terminal   =None,  # type: Optional[bool]
+        appname,                  # type: str
+        logdir            =None,  # type: Optional[str]
+        when              =None,  # type: Optional[str]
+        interval          =None,  # type: Optional[int]
+        backup_count      =None,  # type: Optional[int]
+        output_to_terminal=None   # type: Optional[bool]
 ):
     """
     初始化日志配置。

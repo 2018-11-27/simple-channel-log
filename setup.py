@@ -8,7 +8,7 @@ if sys.version_info.major < 3:
 
 setuptools.setup(
     name='simple-channel-log',
-    version='1.3.5',
+    version='1.4alpha1',
     author='Unnamed great master',
     author_email='<gqylpy@outlook.com>',
     license='MIT',
@@ -26,7 +26,8 @@ setuptools.setup(
     install_requires=['gqylpy_log==0.0a1'],
     extras_require={
         'flask': ['Flask>=0.10'],
-        'requests': ['requests>=2.19']
+        'requests': ['requests>=2.19'],
+        'fastapi': ['fastapi>=0.83.0']
     },
     classifiers=[
         'Development Status :: 3 - Alpha',

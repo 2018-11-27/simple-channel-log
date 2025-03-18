@@ -5,14 +5,14 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Downloads](https://pepy.tech/badge/simple-channel-log)](https://pepy.tech/project/simple-channel-log)
 
-轻量高效的日志库，支持多级别日志记录、日志轮转、流水日志追踪及埋点日志功能，深度集成 Flask 和 Requests 框架。
+轻量高效的日志库，支持多级别日志记录、日志轮转、流水日志追踪及埋点日志功能，深度集成 Flask, FastAPI 以及 Requests 框架。
 
 ## 主要特性
 
 - 📅 支持按时间轮转日志（天/小时/分钟等）
 - 📊 提供多级别日志记录（DEBUG/INFO/WARNING/ERROR/CRITICAL）
-- 🌐 内置Flask中间件记录请求/响应流水日志（Journallog-in）
-- 📡 集成Requests会话记录外部调用流水日志（Journallog-out）
+- 🌐 内置 Flask，FastAPI 中间件记录请求/响应流水日志
+- 📡 集成 Requests 会话记录外部调用流水日志
 - 🔍 智能处理长字符串截断（超过1000字符自动标记）
 - 📁 自动创建分级日志目录结构
 - 💻 支持终端输出与文件存储分离控制
@@ -75,6 +75,33 @@ if __name__ == '__main__':
     app.run()
 ```
 
+### FastAPI 流水日志
+
+导入 `FastAPI` 库并初始化 `simple_channel_log` 即自动启用 FastAPI 流水日志，将自动记录每个接口的调用信息。
+
+```python
+import uvicorn
+import simple_channel_log
+from fastapi import FastAPI, Request
+
+app = FastAPI()
+
+# 初始化日志配置
+simple_channel_log.__init__("<your_appname>")
+
+
+@app.get("/index")
+async def index(request: Request):
+    # 若要在日志中记录接口编码，你需要将接口编码传递给请求状态对象
+    # request.state.method_code = "<method_code>"
+    return {"msg": "ok"}
+
+
+if __name__ == "__main__":
+    # 启动后访问接口将自动记录流水日志
+    uvicorn.run("main:app")
+```
+
 如果调用方已经将接口编码传递到请求头 `request.headers["Method-Code"]`，则会自动获取（优先级低）。
 
 ### Requests 外部调用追踪
@@ -105,7 +132,7 @@ r = requests.get(
 
 | 参数名                | 类型   | 默认值      | 说明                            |
 |--------------------|------|----------|-------------------------------|
-| appname            | str  | 必填       | 应用名称，以服务编码开头                  |
+| appname            | str  | 必填       | 应用名称，以服务编码开头（小写），以下划线拼接       |
 | logdir             | str  | 系统相关默认路径 | 日志存储根目录                       |
 | when               | str  | 'D'      | 轮转周期：W(周)/D(天)/H(时)/M(分)/S(秒) |
 | interval           | int  | 1        | 轮转频率                          |
