@@ -52,7 +52,7 @@ class JournallogMiddleware(BaseHTTPMiddleware):
     async def dispatch(
             self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        if request.url.path == '/healthcheck':
+        if request.url.path == '/healthcheck' or not hasattr(self, 'appname'):
             return await call_next(request)
 
         glog.fastapi_request = request
@@ -122,8 +122,8 @@ class JournallogMiddleware(BaseHTTPMiddleware):
         self.request_headers = request.state.__request_headers__
         self.request_data    = request.state.__request_data__
         self.transaction_id  = request.state.__transaction_id__ = (
-            FuzzyGet(self.request_headers, 'Transaction-ID').result or
-            FuzzyGet(self.request_data, 'transaction_id').result or
+            FuzzyGet(self.request_headers, 'Transaction-ID').v or
+            FuzzyGet(self.request_data, 'transaction_id').v or
             uuid.uuid4().hex
         )
 
@@ -136,14 +136,14 @@ class JournallogMiddleware(BaseHTTPMiddleware):
         url = request.url
         address = f'{url.scheme}://{url.netloc}{url.path}'
 
-        fcode: Str = FuzzyGet(self.request_headers, 'User-Agent').result
+        fcode: Str = FuzzyGet(self.request_headers, 'User-Agent').v
         if not (fcode is None or is_syscode(fcode)):
             fcode = None
 
         method_code: str = (
             getattr(request.state, 'method_code', None) or
-            FuzzyGet(self.request_headers, 'Method-Code').result or
-            FuzzyGet(self.request_data, 'method_code').result
+            FuzzyGet(self.request_headers, 'Method-Code').v or
+            FuzzyGet(self.request_data, 'method_code').v
         )
 
         try:
@@ -151,16 +151,16 @@ class JournallogMiddleware(BaseHTTPMiddleware):
         except (KeyError, AttributeError):
             method_name = None
 
-        response_code = FuzzyGet(response_data, 'code').result
-        order_id      = FuzzyGet(response_data, 'order_id').result
-        province_code = FuzzyGet(response_data, 'province_code').result
-        city_code     = FuzzyGet(response_data, 'city_code').result
-        account_type  = FuzzyGet(response_data, 'account_type').result
-        account_num   = FuzzyGet(response_data, 'account_num').result
+        response_code = FuzzyGet(response_data, 'code').v
+        order_id      = FuzzyGet(response_data, 'order_id').v
+        province_code = FuzzyGet(response_data, 'province_code').v
+        city_code     = FuzzyGet(response_data, 'city_code').v
+        account_type  = FuzzyGet(response_data, 'account_type').v
+        account_num   = FuzzyGet(response_data, 'account_num').v
         response_account_type = \
-            FuzzyGet(response_data, 'response_account_type').result
+            FuzzyGet(response_data, 'response_account_type').v
         response_account_num = \
-            FuzzyGet(response_data, 'response_account_num').result
+            FuzzyGet(response_data, 'response_account_num').v
 
         if response_code is not None:
             response_code = str(response_code)
@@ -242,7 +242,7 @@ class OmitLongString(dict):
 
 
 class FuzzyGet(dict):
-    result: Any = None
+    v: Any = None
 
     def __init__(self, data, key, root=None) -> None:
         if root is None:
@@ -250,7 +250,7 @@ class FuzzyGet(dict):
             root = self
         for k, v in data.items():
             if k.replace('-', '').replace('_', '').lower() == root.key:
-                root.result = data[k]
+                root.v = data[k]
                 break
             dict.__setitem__(self, k, FuzzyGet(v, key=key, root=root))
 

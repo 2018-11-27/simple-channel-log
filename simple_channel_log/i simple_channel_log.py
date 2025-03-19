@@ -223,16 +223,16 @@ def logger(msg, *args, **extra):
         transaction_id = g.__transaction_id__
         method_code = (
             getattr(request, 'method_code', None) or
-            FuzzyGet(g.__request_headers__, 'Method-Code').result or
-            FuzzyGet(g.__request_data__, 'method_code').result
+            FuzzyGet(g.__request_headers__, 'Method-Code').v or
+            FuzzyGet(g.__request_data__, 'method_code').v
         )
     elif has_fastapi_request_context():
         state = glog.fastapi_request.state
         transaction_id = state.__transaction_id__
         method_code = (
             getattr(state, 'method_code', None) or
-            FuzzyGet(state.__request_headers__, 'Method-Code').result or
-            FuzzyGet(state.__request_data__, 'method_code').result
+            FuzzyGet(state.__request_headers__, 'Method-Code').v or
+            FuzzyGet(state.__request_data__, 'method_code').v
         )
     else:
         transaction_id = uuid.uuid4().hex
@@ -313,7 +313,7 @@ def trace(**extra):
 
 
 def journallog_in_before():
-    if request.path == '/healthcheck':
+    if request.path == '/healthcheck' or not hasattr(this, 'appname'):
         return
 
     if not hasattr(g, '__request_time__'):
@@ -337,27 +337,27 @@ def journallog_in_before():
         g.__request_data__ = request_data
 
     g.__transaction_id__ = (
-        FuzzyGet(g.__request_headers__, 'Transaction-ID').result or
-        FuzzyGet(g.__request_data__, 'transaction_id').result or
+        FuzzyGet(g.__request_headers__, 'Transaction-ID').v or
+        FuzzyGet(g.__request_data__, 'transaction_id').v or
         uuid.uuid4().hex
     )
 
 
 def journallog_in(response):
-    if request.path == '/healthcheck':
+    if request.path == '/healthcheck' or not hasattr(this, 'appname'):
         return response
 
     parsed_url = urlparse(request.url)
     address = parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path
 
-    fcode = FuzzyGet(g.__request_headers__, 'User-Agent').result
+    fcode = FuzzyGet(g.__request_headers__, 'User-Agent').v
     if not (fcode is None or is_syscode(fcode)):
         fcode = None
 
     method_code = (
         getattr(request, 'method_code', None) or
-        FuzzyGet(g.__request_headers__, 'Method-Code').result or
-        FuzzyGet(g.__request_data__, 'method_code').result
+        FuzzyGet(g.__request_headers__, 'Method-Code').v or
+        FuzzyGet(g.__request_data__, 'method_code').v
     )
 
     view_func = current_app.view_functions.get(request.endpoint)
@@ -407,7 +407,7 @@ def journallog_in(response):
         int(round((response_time - g.__request_time__).total_seconds() * 1000))
 
     glog.info(jsonx.dumps({
-        'app_name': this.appname + '_info',
+        'app_name': this.appname + '_code',
         'level': 'INFO',
         'log_time': response_time_str,
         'logger': __package__,
@@ -490,19 +490,19 @@ def journallog_out(func):
             transaction_id = glog.fastapi_request.state.__transaction_id__
         else:
             transaction_id = (
-                FuzzyGet(headers, 'Transaction-ID').result or
-                FuzzyGet(request_data, 'transaction_id').result or
+                FuzzyGet(headers, 'Transaction-ID').v or
+                FuzzyGet(request_data, 'transaction_id').v or
                 uuid.uuid4().hex
             )
         FullDelete(headers, 'Transaction-ID')
         headers['Transaction-ID'] = transaction_id
 
         method_code = (
-            FuzzyGet(headers, 'Method-Code').result or
-            FuzzyGet(request_data, 'method_code').result
+            FuzzyGet(headers, 'Method-Code').v or
+            FuzzyGet(request_data, 'method_code').v
         )
 
-        method_name = FuzzyGet(headers, 'Method-Name').result
+        method_name = FuzzyGet(headers, 'Method-Name').v
         if method_name is None:
             f_back = inspect.currentframe().f_back.f_back
             if f_back.f_back is not None:
@@ -622,7 +622,7 @@ class OmitLongString(dict):
 
 
 class FuzzyGet(dict):
-    result = None
+    v = None
 
     def __init__(self, data, key, root=None):
         if root is None:
@@ -630,7 +630,7 @@ class FuzzyGet(dict):
             root = self
         for k, v in data.items():
             if k.replace('-', '').replace('_', '').lower() == root.key:
-                root.result = data[k]
+                root.v = data[k]
                 break
             dict.__setitem__(self, k, FuzzyGet(v, key=key, root=root))
 

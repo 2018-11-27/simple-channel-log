@@ -77,7 +77,7 @@ if __name__ == '__main__':
 
 ### FastAPI 流水日志
 
-导入 `FastAPI` 库并初始化 `simple_channel_log` 即自动启用 FastAPI 流水日志，将自动记录每个接口的调用信息。
+导入 `FastAPI` 库并初始化 `simple_channel_log` 即自动启用 FastAPI 流水日志。
 
 ```python
 import uvicorn
@@ -101,8 +101,6 @@ if __name__ == "__main__":
     # 启动后访问接口将自动记录流水日志
     uvicorn.run("main:app")
 ```
-
-如果调用方已经将接口编码传递到请求头 `request.headers["Method-Code"]`，则会自动获取（优先级低）。
 
 ### Requests 外部调用追踪
 
