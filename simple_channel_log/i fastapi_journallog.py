@@ -52,7 +52,8 @@ class JournallogMiddleware(BaseHTTPMiddleware):
     async def dispatch(
             self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        if request.url.path == '/healthcheck' or not hasattr(self, 'appname'):
+        if request.url.path in ('/healthcheck', '/metrics') \
+                or not hasattr(self, 'appname'):
             return await call_next(request)
 
         glog.fastapi_request = request

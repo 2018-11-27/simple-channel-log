@@ -26,8 +26,8 @@ else:
         @functools.wraps(func)
         def inner(self, *a, **kw):
             func(self, *a, **kw)
-            self.before_request(journallog_in_before)
-            self.after_request(journallog_in)
+            self.before_request(journallog_inner_before)
+            self.after_request(journallog_inner)
         inner.__wrapped__ = func
         return inner
 
@@ -166,7 +166,7 @@ def __init__(
         fastapi_journallog_middleware.syscode = syscode
 
     if requests is not None:
-        requests.Session.request = journallog_out(requests.Session.request)
+        requests.Session.request = journallog_output(requests.Session.request)
 
     if Flask or FastAPI or requests:
         glog.__init__(
@@ -214,7 +214,7 @@ def logger(msg, *args, **extra):
         msg = msg[:1000]
         try:
             msg = msg % args
-        except TypeError:
+        except (TypeError, ValueError):
             pass
     elif isinstance(msg, (dict, list, tuple)):
         msg = OmitLongString(msg)
@@ -312,8 +312,9 @@ def trace(**extra):
     glog.debug(jsonx.dumps(extra, ensure_ascii=False), gname='trace')
 
 
-def journallog_in_before():
-    if request.path == '/healthcheck' or not hasattr(this, 'appname'):
+def journallog_inner_before():
+    if request.path in ('/healthcheck', '/metrics') \
+            or not hasattr(this, 'appname'):
         return
 
     if not hasattr(g, '__request_time__'):
@@ -343,8 +344,9 @@ def journallog_in_before():
     )
 
 
-def journallog_in(response):
-    if request.path == '/healthcheck' or not hasattr(this, 'appname'):
+def journallog_inner(response):
+    if request.path in ('/healthcheck', '/metrics') \
+            or not hasattr(this, 'appname'):
         return response
 
     parsed_url = urlparse(request.url)
@@ -366,29 +368,33 @@ def journallog_in(response):
     try:
         response_data = jsonx.loads(response.get_data())
     except ValueError:
-        response_data = response_code = order_id = \
-            province_code = city_code = \
-            account_type = account_num = \
-            response_account_type = response_account_num = None
-    else:
-        if isinstance(response_data, dict):
-            head = response_data.get('head')
-            x = head if isinstance(head, dict) else response_data
-            response_code = x.get('code')
-            order_id = x.get('order_id')
-            province_code = x.get('province_code')
-            city_code = x.get('city_code')
-            account_type = x.get('account_type')
-            account_num = x.get('account_num')
-            response_account_type = x.get('response_account_type')
-            response_account_num = x.get('response_account_num')
-            if response_code is not None:
-                response_code = str(response_code)
-        else:
-            response_code = order_id = \
-                province_code = city_code = \
-                account_type = account_num = \
-                response_account_type = response_account_num = None
+        response_data = None
+
+    response_code = FuzzyGet(response_data, 'code').v
+    order_id      = FuzzyGet(response_data, 'order_id').v
+    province_code = FuzzyGet(response_data, 'province_code').v
+    city_code     = FuzzyGet(response_data, 'city_code').v
+    account_type  = FuzzyGet(response_data, 'account_type').v
+    account_num   = FuzzyGet(response_data, 'account_num').v
+    response_account_type = \
+        FuzzyGet(response_data, 'response_account_type').v
+    response_account_num = \
+        FuzzyGet(response_data, 'response_account_num').v
+
+    if isinstance(response_code, int):
+        response_code = str(response_code)
+    if isinstance(province_code, int):
+        province_code = str(province_code)
+    if isinstance(city_code, int):
+        city_code = str(city_code)
+    if isinstance(account_type, int):
+        account_type = str(account_type)
+    if isinstance(account_num, int):
+        account_num = str(account_num)
+    if isinstance(response_account_type, int):
+        response_account_type = str(response_account_type)
+    if isinstance(response_account_num, int):
+        response_account_num = str(response_account_num)
 
     request_headers_str = jsonx.dumps(g.__request_headers__, ensure_ascii=False)
     request_payload_str = \
@@ -449,7 +455,7 @@ def journallog_in(response):
     return response
 
 
-def journallog_out(func):
+def journallog_output(func):
 
     @functools.wraps(func)
     def inner(
@@ -521,29 +527,33 @@ def journallog_out(func):
         try:
             response_data = response.json()
         except ValueError:
-            response_data = response_code = order_id = \
-                province_code = city_code = \
-                account_type = account_num = \
-                response_account_type = response_account_num = None
-        else:
-            if isinstance(response_data, dict):
-                head = response_data.get('head')
-                x = head if isinstance(head, dict) else response_data
-                response_code = x.get('code')
-                order_id = x.get('order_id')
-                province_code = x.get('province_code')
-                city_code = x.get('city_code')
-                account_type = x.get('account_type')
-                account_num = x.get('account_num')
-                response_account_type = x.get('response_account_type')
-                response_account_num = x.get('response_account_num')
-                if response_code is not None:
-                    response_code = str(response_code)
-            else:
-                response_code = order_id = \
-                    province_code = city_code = \
-                    account_type = account_num = \
-                    response_account_type = response_account_num = None
+            response_data = None
+
+        response_code = FuzzyGet(response_data, 'code').v
+        order_id      = FuzzyGet(response_data, 'order_id').v
+        province_code = FuzzyGet(response_data, 'province_code').v
+        city_code     = FuzzyGet(response_data, 'city_code').v
+        account_type  = FuzzyGet(response_data, 'account_type').v
+        account_num   = FuzzyGet(response_data, 'account_num').v
+        response_account_type = \
+            FuzzyGet(response_data, 'response_account_type').v
+        response_account_num = \
+            FuzzyGet(response_data, 'response_account_num').v
+
+        if isinstance(response_code, int):
+            response_code = str(response_code)
+        if isinstance(province_code, int):
+            province_code = str(province_code)
+        if isinstance(city_code, int):
+            city_code = str(city_code)
+        if isinstance(account_type, int):
+            account_type = str(account_type)
+        if isinstance(account_num, int):
+            account_num = str(account_num)
+        if isinstance(response_account_type, int):
+            response_account_type = str(response_account_type)
+        if isinstance(response_account_num, int):
+            response_account_num = str(response_account_num)
 
         request_headers_str = \
             jsonx.dumps(dict(response.request.headers), ensure_ascii=False)
