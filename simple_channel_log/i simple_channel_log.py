@@ -8,6 +8,7 @@ import socket
 import inspect
 import warnings
 import functools
+import traceback
 import threading
 
 from datetime import datetime
@@ -200,81 +201,87 @@ def __init__(
 
 def logger(msg, *args, **extra):
     try:
-        app_name = this.appname + '_code'
-    except AttributeError:
-        raise RuntimeError('uninitialized.')
-
-    args = tuple(OmitLongString(v) for v in args)
-    extra = OmitLongString(extra)
-
-    if sys.version_info.major < 3 and isinstance(msg, str):
-        msg = msg.decode('UTF-8')
-
-    if is_char(msg):
-        msg = msg[:1000]
         try:
-            msg = msg % args
-        except (TypeError, ValueError):
-            pass
-    elif isinstance(msg, (dict, list, tuple)):
-        msg = OmitLongString(msg)
+            app_name = this.appname + '_code'
+        except AttributeError:
+            raise RuntimeError('uninitialized.')
 
-    if has_flask_request_context():
-        transaction_id = g.__transaction_id__
-        method_code = (
-            getattr(request, 'method_code', None) or
-            FuzzyGet(g.__request_headers__, 'Method-Code').v or
-            FuzzyGet(g.__request_data__, 'method_code').v
+        args = tuple(OmitLongString(v) for v in args)
+        extra = OmitLongString(extra)
+
+        if sys.version_info.major < 3 and isinstance(msg, str):
+            msg = msg.decode('UTF-8')
+
+        if is_char(msg):
+            msg = msg[:1000]
+            try:
+                msg = msg % args
+            except (TypeError, ValueError):
+                pass
+        elif isinstance(msg, (dict, list, tuple)):
+            msg = OmitLongString(msg)
+
+        if has_flask_request_context():
+            transaction_id = getattr(g, '__transaction_id__', None)
+            method_code = (
+                getattr(request, 'method_code', None) or
+                FuzzyGet(g.__request_headers__, 'Method-Code').v or
+                FuzzyGet(g.__request_data__, 'method_code').v
+            )
+        elif has_fastapi_request_context():
+            state = glog.fastapi_request.state
+            transaction_id = state.__transaction_id__
+            method_code = (
+                getattr(state, 'method_code', None) or
+                FuzzyGet(state.__request_headers__, 'Method-Code').v or
+                FuzzyGet(state.__request_data__, 'method_code').v
+            )
+        else:
+            transaction_id = uuid.uuid4().hex
+            method_code = None
+
+        f_back = inspect.currentframe().f_back
+        level = f_back.f_code.co_name
+        f_back = f_back.f_back
+
+        data = {
+            'app_name': app_name,
+            'level': level.upper(),
+            'log_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
+            'logger': __package__,
+            'thread': threading.current_thread().ident,
+            'code_message': msg,
+            'transaction_id': transaction_id,
+            'method_code': method_code,
+            'method_name': getattr(f_back.f_code, co_qualname),
+            'error_code': None,
+            'tag': None,
+            'host_name': socket.gethostname(),
+            'filename': f_back.f_code.co_filename,
+            'line': f_back.f_lineno
+        }
+
+        for k, v in extra.items():
+            if data.get(k) is not None:
+                continue
+            if sys.version_info.major < 3 and isinstance(v, dict):
+                for kk in v.copy():
+                    if isinstance(kk, str):
+                        v[kk.decode('UTF-8')] = v.pop(kk)
+            try:
+                data[k] = jsonx.dumps(v, ensure_ascii=False)
+            except ValueError:
+                data[k] = str(v)
+
+        getattr(glog, level)(jsonx.dumps(data, ensure_ascii=False), gname='code')
+
+        if this.output_to_terminal:
+            getattr(glog, level)(msg, gname='stream')
+    except Exception:
+        sys.stderr.write(
+            traceback.format_exc() +
+            '\nAn exception occurred while recording the log.'
         )
-    elif has_fastapi_request_context():
-        state = glog.fastapi_request.state
-        transaction_id = state.__transaction_id__
-        method_code = (
-            getattr(state, 'method_code', None) or
-            FuzzyGet(state.__request_headers__, 'Method-Code').v or
-            FuzzyGet(state.__request_data__, 'method_code').v
-        )
-    else:
-        transaction_id = uuid.uuid4().hex
-        method_code = None
-
-    f_back = inspect.currentframe().f_back
-    level = f_back.f_code.co_name
-    f_back = f_back.f_back
-
-    data = {
-        'app_name': app_name,
-        'level': level.upper(),
-        'log_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
-        'logger': __package__,
-        'thread': threading.current_thread().ident,
-        'code_message': msg,
-        'transaction_id': transaction_id,
-        'method_code': method_code,
-        'method_name': getattr(f_back.f_code, co_qualname),
-        'error_code': None,
-        'tag': None,
-        'host_name': socket.gethostname(),
-        'filename': f_back.f_code.co_filename,
-        'line': f_back.f_lineno
-    }
-
-    for k, v in extra.items():
-        if data.get(k) is not None:
-            continue
-        if sys.version_info.major < 3 and isinstance(v, dict):
-            for kk in v.copy():
-                if isinstance(kk, str):
-                    v[kk.decode('UTF-8')] = v.pop(kk)
-        try:
-            data[k] = jsonx.dumps(v, ensure_ascii=False)
-        except ValueError:
-            data[k] = str(v)
-
-    getattr(glog, level)(jsonx.dumps(data, ensure_ascii=False), gname='code')
-
-    if this.output_to_terminal:
-        getattr(glog, level)(msg, gname='stream')
 
 
 def debug(msg, *args, **extra):
@@ -313,219 +320,67 @@ def trace(**extra):
 
 
 def journallog_inner_before():
-    if request.path in ('/healthcheck', '/metrics') \
-            or not hasattr(this, 'appname'):
-        return
+    try:
+        if request.path in ('/healthcheck', '/metrics') \
+                or not hasattr(this, 'appname'):
+            return
 
-    if not hasattr(g, '__request_time__'):
-        g.__request_time__ = datetime.now()
+        if not hasattr(g, '__request_time__'):
+            g.__request_time__ = datetime.now()
 
-    if not hasattr(g, '__request_headers__'):
-        g.__request_headers__ = dict(request.headers)
+        if not hasattr(g, '__request_headers__'):
+            g.__request_headers__ = dict(request.headers)
 
-    if not hasattr(g, '__request_data__'):
-        if request.args:
-            request_data = request.args.to_dict()
-        elif request.form:
-            request_data = request.form.to_dict()
-        else:
-            request_body = request.data
-            try:
-                request_data = jsonx.loads(request_body) \
-                    if request_body else None
-            except ValueError:
-                request_data = None
-        g.__request_data__ = request_data
+        if not hasattr(g, '__request_data__'):
+            if request.args:
+                request_data = request.args.to_dict()
+            elif request.form:
+                request_data = request.form.to_dict()
+            else:
+                request_body = request.data
+                try:
+                    request_data = jsonx.loads(request_body) \
+                        if request_body else None
+                except ValueError:
+                    request_data = None
+            g.__request_data__ = request_data
 
-    g.__transaction_id__ = (
-        FuzzyGet(g.__request_headers__, 'Transaction-ID').v or
-        FuzzyGet(g.__request_data__, 'transaction_id').v or
-        uuid.uuid4().hex
-    )
+        g.__transaction_id__ = (
+            FuzzyGet(g.__request_headers__, 'Transaction-ID').v or
+            FuzzyGet(g.__request_data__, 'transaction_id').v or
+            uuid.uuid4().hex
+        )
+    except Exception:
+        sys.stderr.write(
+            traceback.format_exc() + '\nAn exception occurred while '
+            'recording the internal transaction log.'
+        )
 
 
 def journallog_inner(response):
-    if request.path in ('/healthcheck', '/metrics') \
-            or not hasattr(this, 'appname'):
-        return response
-
-    parsed_url = urlparse(request.url)
-    address = parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path
-
-    fcode = FuzzyGet(g.__request_headers__, 'User-Agent').v
-    if not (fcode is None or is_syscode(fcode)):
-        fcode = None
-
-    method_code = (
-        getattr(request, 'method_code', None) or
-        FuzzyGet(g.__request_headers__, 'Method-Code').v or
-        FuzzyGet(g.__request_data__, 'method_code').v
-    )
-
-    view_func = current_app.view_functions.get(request.endpoint)
-    method_name = view_func.__name__ if view_func else None
-
     try:
-        response_data = jsonx.loads(response.get_data())
-    except ValueError:
-        response_data = None
+        if request.path in ('/healthcheck', '/metrics') \
+                or not hasattr(this, 'appname'):
+            return response
 
-    response_code = FuzzyGet(response_data, 'code').v
-    order_id      = FuzzyGet(response_data, 'order_id').v
-    province_code = FuzzyGet(response_data, 'province_code').v
-    city_code     = FuzzyGet(response_data, 'city_code').v
-    account_type  = FuzzyGet(response_data, 'account_type').v
-    account_num   = FuzzyGet(response_data, 'account_num').v
-    response_account_type = \
-        FuzzyGet(response_data, 'response_account_type').v
-    response_account_num = \
-        FuzzyGet(response_data, 'response_account_num').v
+        parsed_url = urlparse(request.url)
+        address = parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path
 
-    if isinstance(response_code, int):
-        response_code = str(response_code)
-    if isinstance(province_code, int):
-        province_code = str(province_code)
-    if isinstance(city_code, int):
-        city_code = str(city_code)
-    if isinstance(account_type, int):
-        account_type = str(account_type)
-    if isinstance(account_num, int):
-        account_num = str(account_num)
-    if isinstance(response_account_type, int):
-        response_account_type = str(response_account_type)
-    if isinstance(response_account_num, int):
-        response_account_num = str(response_account_num)
-
-    request_headers_str = jsonx.dumps(g.__request_headers__, ensure_ascii=False)
-    request_payload_str = \
-        jsonx.dumps(OmitLongString(g.__request_data__), ensure_ascii=False)
-    response_headers_str = \
-        jsonx.dumps(dict(response.headers), ensure_ascii=False)
-    response_payload_str = \
-        jsonx.dumps(OmitLongString(response_data), ensure_ascii=False)
-
-    request_time_str = g.__request_time__.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-
-    response_time = datetime.now()
-    response_time_str = response_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-
-    total_time = \
-        int(round((response_time - g.__request_time__).total_seconds() * 1000))
-
-    glog.info(jsonx.dumps({
-        'app_name': this.appname + '_code',
-        'level': 'INFO',
-        'log_time': response_time_str,
-        'logger': __package__,
-        'thread': str(threading.current_thread().ident),
-        'transaction_id': g.__transaction_id__,
-        'dialog_type': 'in',
-        'address': address,
-        'fcode': fcode,
-        'tcode': this.syscode,
-        'method_code': method_code,
-        'method_name': method_name,
-        'http_method': request.method,
-        'request_time': request_time_str,
-        'request_headers': request_headers_str,
-        'request_payload': request_payload_str,
-        'response_time': response_time_str,
-        'response_headers': response_headers_str,
-        'response_payload': response_payload_str,
-        'response_code': response_code,
-        'response_remark': None,
-        'http_status_code': str(response.status_code),
-        'order_id': order_id,
-        'province_code': province_code,
-        'city_code': city_code,
-        'total_time': total_time,
-        'error_code': response_code,
-        'request_ip': request.remote_addr,
-        'host_ip': parsed_url.hostname,
-        'host_name': socket.gethostname(),
-        'account_type': account_type,
-        'account_num': account_num,
-        'response_account_type': response_account_type,
-        'response_account_num': response_account_num,
-        'user': None,
-        'tag': None,
-        'service_line': None
-    }, ensure_ascii=False), gname='info_')
-
-    return response
-
-
-def journallog_output(func):
-
-    @functools.wraps(func)
-    def inner(
-            self, method, url,
-            headers=None, params=None, data=None, json=None,
-            **kw
-    ):
-        if headers is None:
-            headers = {'User-Agent': this.syscode}
-        else:
-            FullDelete(headers, 'User-Agent')
-            headers['User-Agent'] = this.syscode
-
-        parse_url = urlparse(url)
-        address = parse_url.scheme + '://' + parse_url.netloc + parse_url.path
-        query_string = {k: v[0] for k, v in parse_qs(parse_url.query).items()}
-
-        if params is not None:
-            params.update(query_string)
-            request_data = params
-        elif query_string:
-            request_data = query_string
-        elif data:
-            request_data = data
-            if is_char(request_data):
-                try:
-                    request_data = jsonx.loads(request_data)
-                except ValueError:
-                    pass
-        elif json:
-            request_data = json
-        else:
-            request_data = None
-
-        if has_flask_request_context():
-            transaction_id = g.__transaction_id__
-        elif has_fastapi_request_context():
-            transaction_id = glog.fastapi_request.state.__transaction_id__
-        else:
-            transaction_id = (
-                FuzzyGet(headers, 'Transaction-ID').v or
-                FuzzyGet(request_data, 'transaction_id').v or
-                uuid.uuid4().hex
-            )
-        FullDelete(headers, 'Transaction-ID')
-        headers['Transaction-ID'] = transaction_id
+        fcode = FuzzyGet(g.__request_headers__, 'User-Agent').v
+        if not (fcode is None or is_syscode(fcode)):
+            fcode = None
 
         method_code = (
-            FuzzyGet(headers, 'Method-Code').v or
-            FuzzyGet(request_data, 'method_code').v
+            getattr(request, 'method_code', None) or
+            FuzzyGet(g.__request_headers__, 'Method-Code').v or
+            FuzzyGet(g.__request_data__, 'method_code').v
         )
 
-        method_name = FuzzyGet(headers, 'Method-Name').v
-        if method_name is None:
-            f_back = inspect.currentframe().f_back.f_back
-            if f_back.f_back is not None:
-                f_back = f_back.f_back
-            method_name = getattr(f_back.f_code, co_qualname)
-
-        request_time = datetime.now()
-        response = func(
-            self, method, url,
-            headers=headers, params=params, data=data, json=json,
-            **kw
-        )
-        response_time = datetime.now()
-        response_time_str = response_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        view_func = current_app.view_functions.get(request.endpoint)
+        method_name = view_func.__name__ if view_func else None
 
         try:
-            response_data = response.json()
+            response_data = jsonx.loads(response.get_data())
         except ValueError:
             response_data = None
 
@@ -555,33 +410,37 @@ def journallog_output(func):
         if isinstance(response_account_num, int):
             response_account_num = str(response_account_num)
 
-        request_headers_str = \
-            jsonx.dumps(dict(response.request.headers), ensure_ascii=False)
+        request_headers_str = jsonx.dumps(g.__request_headers__, ensure_ascii=False)
         request_payload_str = \
-            jsonx.dumps(OmitLongString(request_data), ensure_ascii=False)
+            jsonx.dumps(OmitLongString(g.__request_data__), ensure_ascii=False)
         response_headers_str = \
             jsonx.dumps(dict(response.headers), ensure_ascii=False)
         response_payload_str = \
             jsonx.dumps(OmitLongString(response_data), ensure_ascii=False)
 
+        request_time_str = g.__request_time__.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
+        response_time = datetime.now()
+        response_time_str = response_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
         total_time = \
-            int(round((response_time - request_time).total_seconds() * 1000))
+            int(round((response_time - g.__request_time__).total_seconds() * 1000))
 
         glog.info(jsonx.dumps({
-            'app_name': this.appname + '_info',
+            'app_name': this.appname + '_code',
             'level': 'INFO',
             'log_time': response_time_str,
             'logger': __package__,
             'thread': str(threading.current_thread().ident),
-            'transaction_id': transaction_id,
-            'dialog_type': 'out',
+            'transaction_id': g.__transaction_id__,
+            'dialog_type': 'in',
             'address': address,
-            'fcode': this.syscode,
+            'fcode': fcode,
             'tcode': this.syscode,
             'method_code': method_code,
             'method_name': method_name,
-            'http_method': response.request.method,
-            'request_time': request_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
+            'http_method': request.method,
+            'request_time': request_time_str,
             'request_headers': request_headers_str,
             'request_payload': request_payload_str,
             'response_time': response_time_str,
@@ -595,8 +454,8 @@ def journallog_output(func):
             'city_code': city_code,
             'total_time': total_time,
             'error_code': response_code,
-            'request_ip': parse_url.hostname,
-            'host_ip': socket.gethostbyname(socket.gethostname()),
+            'request_ip': request.remote_addr,
+            'host_ip': parsed_url.hostname,
             'host_name': socket.gethostname(),
             'account_type': account_type,
             'account_num': account_num,
@@ -606,8 +465,180 @@ def journallog_output(func):
             'tag': None,
             'service_line': None
         }, ensure_ascii=False), gname='info_')
-
+    except Exception:
+        sys.stderr.write(
+            traceback.format_exc() + '\nAn exception occurred while '
+            'recording the internal transaction log.'
+        )
+    finally:
         return response
+
+
+def journallog_output(func):
+
+    @functools.wraps(func)
+    def inner(
+            self, method, url,
+            headers=None, params=None, data=None, json=None,
+            **kw
+    ):
+        try:
+            if headers is None:
+                headers = {'User-Agent': this.syscode}
+            else:
+                FullDelete(headers, 'User-Agent')
+                headers['User-Agent'] = this.syscode
+
+            parse_url = urlparse(url)
+            address = parse_url.scheme + '://' + parse_url.netloc + parse_url.path
+            query_string = {k: v[0] for k, v in parse_qs(parse_url.query).items()}
+
+            if params is not None:
+                params.update(query_string)
+                request_data = params
+            elif query_string:
+                request_data = query_string
+            elif data:
+                request_data = data
+                if is_char(request_data):
+                    try:
+                        request_data = jsonx.loads(request_data)
+                    except ValueError:
+                        pass
+            elif json:
+                request_data = json
+            else:
+                request_data = None
+
+            if has_flask_request_context():
+                transaction_id = getattr(g, '__transaction_id__', None)
+            elif has_fastapi_request_context():
+                transaction_id = glog.fastapi_request.state.__transaction_id__
+            else:
+                transaction_id = (
+                    FuzzyGet(headers, 'Transaction-ID').v or
+                    FuzzyGet(request_data, 'transaction_id').v or
+                    uuid.uuid4().hex
+                )
+            FullDelete(headers, 'Transaction-ID')
+            headers['Transaction-ID'] = transaction_id
+
+            method_code = (
+                FuzzyGet(headers, 'Method-Code').v or
+                FuzzyGet(request_data, 'method_code').v
+            )
+
+            method_name = FuzzyGet(headers, 'Method-Name').v
+            if method_name is None:
+                f_back = inspect.currentframe().f_back.f_back
+                if f_back.f_back is not None:
+                    f_back = f_back.f_back
+                method_name = getattr(f_back.f_code, co_qualname)
+
+            request_time = datetime.now()
+        except Exception:
+            sys.stderr.write(
+                traceback.format_exc() + '\nAn exception occurred while '
+                'recording the internal transaction log.'
+            )
+        response = func(
+            self, method, url,
+            headers=headers, params=params, data=data, json=json,
+            **kw
+        )
+        try:
+            response_time = datetime.now()
+            response_time_str = response_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
+            try:
+                response_data = response.json()
+            except ValueError:
+                response_data = None
+
+            response_code = FuzzyGet(response_data, 'code').v
+            order_id      = FuzzyGet(response_data, 'order_id').v
+            province_code = FuzzyGet(response_data, 'province_code').v
+            city_code     = FuzzyGet(response_data, 'city_code').v
+            account_type  = FuzzyGet(response_data, 'account_type').v
+            account_num   = FuzzyGet(response_data, 'account_num').v
+            response_account_type = \
+                FuzzyGet(response_data, 'response_account_type').v
+            response_account_num = \
+                FuzzyGet(response_data, 'response_account_num').v
+
+            if isinstance(response_code, int):
+                response_code = str(response_code)
+            if isinstance(province_code, int):
+                province_code = str(province_code)
+            if isinstance(city_code, int):
+                city_code = str(city_code)
+            if isinstance(account_type, int):
+                account_type = str(account_type)
+            if isinstance(account_num, int):
+                account_num = str(account_num)
+            if isinstance(response_account_type, int):
+                response_account_type = str(response_account_type)
+            if isinstance(response_account_num, int):
+                response_account_num = str(response_account_num)
+
+            request_headers_str = \
+                jsonx.dumps(dict(response.request.headers), ensure_ascii=False)
+            request_payload_str = \
+                jsonx.dumps(OmitLongString(request_data), ensure_ascii=False)
+            response_headers_str = \
+                jsonx.dumps(dict(response.headers), ensure_ascii=False)
+            response_payload_str = \
+                jsonx.dumps(OmitLongString(response_data), ensure_ascii=False)
+
+            total_time = \
+                int(round((response_time - request_time).total_seconds() * 1000))
+
+            glog.info(jsonx.dumps({
+                'app_name': this.appname + '_info',
+                'level': 'INFO',
+                'log_time': response_time_str,
+                'logger': __package__,
+                'thread': str(threading.current_thread().ident),
+                'transaction_id': transaction_id,
+                'dialog_type': 'out',
+                'address': address,
+                'fcode': this.syscode,
+                'tcode': this.syscode,
+                'method_code': method_code,
+                'method_name': method_name,
+                'http_method': response.request.method,
+                'request_time': request_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
+                'request_headers': request_headers_str,
+                'request_payload': request_payload_str,
+                'response_time': response_time_str,
+                'response_headers': response_headers_str,
+                'response_payload': response_payload_str,
+                'response_code': response_code,
+                'response_remark': None,
+                'http_status_code': str(response.status_code),
+                'order_id': order_id,
+                'province_code': province_code,
+                'city_code': city_code,
+                'total_time': total_time,
+                'error_code': response_code,
+                'request_ip': parse_url.hostname,
+                'host_ip': socket.gethostbyname(socket.gethostname()),
+                'host_name': socket.gethostname(),
+                'account_type': account_type,
+                'account_num': account_num,
+                'response_account_type': response_account_type,
+                'response_account_num': response_account_num,
+                'user': None,
+                'tag': None,
+                'service_line': None
+            }, ensure_ascii=False), gname='info_')
+        except Exception:
+            sys.stderr.write(
+                traceback.format_exc() + '\nAn exception occurred while '
+                'recording the internal transaction log.'
+            )
+        finally:
+            return response
 
     inner.__wrapped__ = func
     return inner
