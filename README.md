@@ -121,7 +121,9 @@ r = requests.get(
     'http://gqylpy.com/index',
     headers={
         # 若要在日志中记录接口编码，你需要将接口编码传递到请求头
-        # "Method-Code": "<method_code>"
+        # "Method-Code": "<method_code>",
+        # 若要在日志中记录被调用方的系统编码，你需要将被调用方的系统编码传递到请求头
+        # "T-Code": "<tcode>"
     }
 )
 ```

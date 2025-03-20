@@ -8,7 +8,7 @@ if sys.version_info.major < 3:
 
 setuptools.setup(
     name='simple-channel-log',
-    version='1.4.2',
+    version='1.5alpha1',
     author='Unnamed great master',
     author_email='<gqylpy@outlook.com>',
     license='MIT',
