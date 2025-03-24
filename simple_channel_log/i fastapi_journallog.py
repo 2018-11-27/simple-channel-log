@@ -75,7 +75,7 @@ class JournallogMiddleware(BaseHTTPMiddleware):
             async for chunk in body_iterator:
                 response_body += chunk
 
-            await self.after(request, response, response_payload=try_json_loads(response_body))
+            await self.after(request, response, response_payload=try_json_loads(response_body) or {})
         except Exception:
             sys.stderr.write(
                 traceback.format_exc() +

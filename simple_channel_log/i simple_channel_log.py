@@ -380,7 +380,7 @@ def journallog_inner(response):
             request_headers=g.__request_headers__,
             request_payload=g.__request_payload__,
             response_headers=dict(response.headers),
-            response_payload=try_json_loads(response.get_data()),
+            response_payload=try_json_loads(response.get_data()) or {},
             http_status_code=response.status_code,
             request_ip=request.remote_addr,
             host_ip=parsed_url.hostname
@@ -465,7 +465,7 @@ def journallog_output(func):
             try:
                 response_payload = response.json()
             except ValueError:
-                response_payload = None
+                response_payload = {}
 
             journallog_logger(
                 transaction_id=transaction_id,
