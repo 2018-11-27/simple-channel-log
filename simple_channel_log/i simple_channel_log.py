@@ -515,31 +515,39 @@ def journallog_logger(
         request_ip,        # type: str
         host_ip,           # type: str
 ):
-    response_code = FuzzyGet(request_payload, 'code').v or FuzzyGet(response_payload, 'code').v
-    order_id      = FuzzyGet(request_payload, 'order_id').v or FuzzyGet(response_payload, 'order_id').v
-    province_code = FuzzyGet(request_payload, 'province_code').v or FuzzyGet(response_payload, 'order_id').v
-    city_code     = FuzzyGet(request_payload, 'city_code').v or FuzzyGet(response_payload, 'order_id').v
-    account_type  = FuzzyGet(request_payload, 'account_type').v or FuzzyGet(response_payload, 'order_id').v
-    account_num   = FuzzyGet(request_payload, 'account_num').v or FuzzyGet(response_payload, 'order_id').v
-    response_account_type = \
-        FuzzyGet(request_payload, 'response_account_type').v or FuzzyGet(response_payload, 'order_id').v
-    response_account_num = \
-        FuzzyGet(request_payload, 'response_account_num').v or FuzzyGet(response_payload, 'order_id').v
+    response_code = FuzzyGet(response_payload, 'code').v
+    # order_id      = FuzzyGet(request_payload, 'order_id').v or FuzzyGet(response_payload, 'order_id').v
+    # province_code = FuzzyGet(request_payload, 'province_code').v or FuzzyGet(response_payload, 'order_id').v
+    # city_code     = FuzzyGet(request_payload, 'city_code').v or FuzzyGet(response_payload, 'order_id').v
+    # account_type  = FuzzyGet(request_payload, 'account_type').v or FuzzyGet(response_payload, 'order_id').v
+    # account_num   = FuzzyGet(request_payload, 'account_num').v or FuzzyGet(response_payload, 'order_id').v
+    # response_account_type = \
+    #     FuzzyGet(request_payload, 'response_account_type').v or FuzzyGet(response_payload, 'order_id').v
+    # response_account_num = \
+    #     FuzzyGet(request_payload, 'response_account_num').v or FuzzyGet(response_payload, 'order_id').v
 
     if isinstance(response_code, int):
         response_code = str(response_code)
-    if isinstance(province_code, int):
-        province_code = str(province_code)
-    if isinstance(city_code, int):
-        city_code = str(city_code)
-    if isinstance(account_type, int):
-        account_type = str(account_type)
-    if isinstance(account_num, int):
-        account_num = str(account_num)
-    if isinstance(response_account_type, int):
-        response_account_type = str(response_account_type)
-    if isinstance(response_account_num, int):
-        response_account_num = str(response_account_num)
+    # if isinstance(province_code, int):
+    #     province_code = str(province_code)
+    # if isinstance(city_code, int):
+    #     city_code = str(city_code)
+    # if isinstance(account_type, int):
+    #     account_type = str(account_type)
+    # if isinstance(account_num, int):
+    #     account_num = str(account_num)
+    # if isinstance(response_account_type, int):
+    #     response_account_type = str(response_account_type)
+    # if isinstance(response_account_num, int):
+    #     response_account_num = str(response_account_num)
+
+    order_id              = None
+    province_code         = None
+    city_code             = None
+    account_type          = None
+    account_num           = None
+    response_account_type = None
+    response_account_num  = None
 
     request_headers_str  = try_json_dumps(request_headers)
     request_payload_str  = try_json_dumps(OmitLongString(request_payload))
