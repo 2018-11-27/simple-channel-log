@@ -2,7 +2,6 @@
 import os
 import re
 import sys
-import time
 import uuid
 import json as jsonx
 import socket
@@ -28,8 +27,8 @@ else:
         @functools.wraps(func)
         def inner(self, *a, **kw):
             func(self, *a, **kw)
-            self.before_request(journallog_inner_before)
-            self.after_request(journallog_inner)
+            self.before_request(journallog_flask_before)
+            self.after_request(journallog_flask)
         inner.__wrapped__ = func
         return inner
 
@@ -56,6 +55,11 @@ try:
     import requests
 except ImportError:
     requests = None
+
+try:
+    import unirest
+except ImportError:
+    unirest = None
 
 if sys.version_info.major < 3:
     from urlparse import urlparse, parse_qs
@@ -165,9 +169,14 @@ def __init__(
         fastapi_journallog_middleware.syscode = syscode
 
     if requests is not None:
-        requests.Session.request = journallog_output(requests.Session.request)
+        requests.Session.request = journallog_request(requests.Session.request)
 
-    if Flask or FastAPI or requests:
+    if unirest is not None:
+        unirest.__request = JournallogUnirest(unirest.__request)
+        unirest.USER_AGENT = syscode
+        threading.Timer(60, JournallogUnirest.reset_unirest_user_agent)
+
+    if Flask or FastAPI or requests or unirest:
         glog.__init__(
             'info',
             handlers=[{
@@ -273,7 +282,7 @@ def logger(msg, *args, **extra):
         if this.output_to_terminal:
             getattr(glog, level)(msg, gname='stream')
     except Exception:
-        sys.stderr.write(traceback.format_exc() + '\nAn exception occurred while recording the log.')
+        sys.stderr.write(traceback.format_exc() + '\nAn exception occurred while recording the log.\n')
 
 
 def debug(msg, *args, **extra):
@@ -311,7 +320,7 @@ def trace(**extra):
     glog.debug(try_json_dumps(extra), gname='trace')
 
 
-def journallog_inner_before():
+def journallog_flask_before():
     try:
         if request.path in ('/healthcheck', '/metrics') or not hasattr(this, 'appname'):
             return
@@ -348,7 +357,7 @@ def journallog_inner_before():
         )
 
 
-def journallog_inner(response):
+def journallog_flask(response):
     try:
         if request.path in ('/healthcheck', '/metrics') or not hasattr(this, 'appname'):
             return response
@@ -395,28 +404,13 @@ def journallog_inner(response):
         return response
 
 
-def journallog_output(func):
+def journallog_request(func):
 
     @functools.wraps(func)
     def inner(self, method, url, headers=None, params=None, data=None, json=None, **kw):
         try:
-            if headers is None:
-                headers = {'User-Agent': this.syscode}
-            else:
-                FullDelete(headers, 'User-Agent')
-                headers['User-Agent'] = this.syscode
-            request_time = datetime.now()
-        except Exception:
-            sys.stderr.write(
-                traceback.format_exc() +
-                '\nAn exception occurred while recording the internal transaction log.\n'
-            )
-        response = func(self, method, url, headers=headers, params=params, data=data, json=json, **kw)
-        try:
-            parse_url = urlparse(url)
-            address = parse_url.scheme + '://' + parse_url.netloc + parse_url.path
-
-            request_payload = {k: v[0] for k, v in parse_qs(parse_url.query).items()}
+            parsed_url = urlparse(url)
+            request_payload = {k: v[0] for k, v in parse_qs(parsed_url.query).items()}
 
             if isinstance(params, dict):
                 request_payload.update(params)
@@ -449,12 +443,25 @@ def journallog_output(func):
                     FuzzyGet(request_payload, 'transaction_id').v or
                     uuid.uuid4().hex
                 )
-            FullDelete(headers, 'Transaction-ID')
-            headers['Transaction-ID'] = transaction_id
 
-            method_code = FuzzyGet(headers, 'Method-Code').v or FuzzyGet(request_payload, 'method_code').v
-            tcode = FuzzyGet(headers, 'T-Code').v or FuzzyGet(request_payload, 'tcode').v
+            if headers is None:
+                headers = {'User-Agent': this.syscode, 'Transaction-ID': transaction_id}
+            else:
+                FullDelete(headers, 'User-Agent')
+                FullDelete(headers, 'Transaction-ID')
+                headers['User-Agent'] = this.syscode
+                headers['Transaction-ID'] = transaction_id
 
+            request_time = datetime.now()
+        except Exception:
+            sys.stderr.write(
+                traceback.format_exc() +
+                '\nAn exception occurred while recording the external transaction log.\n'
+            )
+
+        response = func(self, method, url, headers=headers, params=params, data=data, json=json, **kw)
+
+        try:
             method_name = FuzzyGet(headers, 'Method-Name').v
             if method_name is None:
                 f_back = inspect.currentframe().f_back.f_back
@@ -470,31 +477,125 @@ def journallog_output(func):
             journallog_logger(
                 transaction_id=transaction_id,
                 dialog_type='out',
-                address=address,
+                address=parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path,
                 fcode=this.syscode,
-                tcode=tcode,
-                method_code=method_code,
+                tcode=FuzzyGet(headers, 'T-Code').v or FuzzyGet(request_payload, 'tcode').v,
+                method_code=FuzzyGet(headers, 'Method-Code').v or FuzzyGet(request_payload, 'method_code').v,
                 method_name=method_name,
-                http_method=response.request.method,
+                http_method=method,
                 request_time=request_time,
                 request_headers=dict(response.request.headers),
                 request_payload=request_payload,
                 response_headers=dict(response.headers),
                 response_payload=response_payload,
                 http_status_code=response.status_code,
-                request_ip=parse_url.hostname,
+                request_ip=parsed_url.hostname,
                 host_ip=socket.gethostbyname(socket.gethostname())
             )
         except Exception:
             sys.stderr.write(
                 traceback.format_exc() +
-                '\nAn exception occurred while recording the internal transaction log.\n'
+                '\nAn exception occurred while recording the external transaction log.\n'
             )
         finally:
             return response
 
     inner.__wrapped__ = func
     return inner
+
+
+class JournallogUnirest(object):
+
+    def __init__(self, func):
+        self.__wrapped__ = func
+        functools.update_wrapper(self, func)
+
+    def __call__(self, method, url, params={}, headers=None, *a, **kw):
+        try:
+            parsed_url = urlparse(url)
+            request_headers, request_payload = self.before(parsed_url.query, params, headers)
+            request_time = datetime.now()
+        except Exception:
+            sys.stderr.write(
+                traceback.format_exc() +
+                '\nAn exception occurred while recording the external transaction log.\n'
+            )
+
+        response = self.__wrapped__(method, url, params, headers, *a, **kw)
+
+        try:
+            self.after(method, parsed_url, request_time, request_headers, request_payload, response)
+        except Exception:
+            sys.stderr.write(
+                traceback.format_exc() +
+                '\nAn exception occurred while recording the external transaction log.\n'
+            )
+        finally:
+            return response
+
+    @staticmethod
+    def before(query_params, request_params, request_headers):
+        request_payload = {k: v[0] for k, v in parse_qs(query_params).items()}
+
+        if is_char(request_params):
+            request_params = try_json_loads(request_params)
+        if isinstance(request_params, dict):
+            request_payload.update(request_params)
+        elif isinstance(request_params, (list, tuple)):
+            request_payload['data'] = request_params
+
+        if has_flask_request_context():
+            transaction_id = getattr(g, '__transaction_id__', None)
+        elif has_fastapi_request_context():
+            try:
+                transaction_id = glog.fastapi_request.state.__transaction_id__
+            except AttributeError:
+                transaction_id = None
+        else:
+            transaction_id = (
+                FuzzyGet(request_headers, 'Transaction-ID').v or
+                FuzzyGet(request_payload, 'transaction_id').v or
+                uuid.uuid4().hex
+            )
+        if request_headers is None:
+            request_headers = {'User-Agent': this.syscode, 'Transaction-ID': transaction_id}
+        else:
+            FullDelete(request_headers, 'User-Agent')
+            FullDelete(request_headers, 'Transaction-ID')
+            request_headers['User-Agent'] = this.syscode
+            request_headers['Transaction-ID'] = transaction_id
+
+        return request_headers, request_payload
+
+    @staticmethod
+    def after(method, parsed_url, request_time, request_headers, request_payload, response):
+        method_name = FuzzyGet(request_headers, 'Method-Name').v
+        if method_name is None:
+            f_back = inspect.currentframe().f_back.f_back.f_back.f_back
+            method_name = getattr(f_back.f_code, co_qualname)
+
+        journallog_logger(
+            transaction_id=request_headers['Transaction-ID'],
+            dialog_type='out',
+            address=parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path,
+            fcode=this.syscode,
+            tcode=FuzzyGet(request_headers, 'T-Code').v or FuzzyGet(request_payload, 'tcode').v,
+            method_code=FuzzyGet(request_headers, 'Method-Code').v or FuzzyGet(request_payload, 'method_code').v,
+            method_name=method_name,
+            http_method=method,
+            request_time=request_time,
+            request_headers=request_headers,
+            request_payload=request_payload,
+            response_headers=dict(response.headers),
+            response_payload=try_json_loads(response.raw_body) or {},
+            http_status_code=response.code,
+            request_ip=parsed_url.hostname,
+            host_ip=socket.gethostbyname(socket.gethostname())
+        )
+
+    @staticmethod
+    def reset_unirest_user_agent():
+        unirest.USER_AGENT = this.syscode
 
 
 def journallog_logger(
@@ -513,10 +614,10 @@ def journallog_logger(
         response_payload,  # type: dict
         http_status_code,  # type: int
         request_ip,        # type: str
-        host_ip,           # type: str
+        host_ip            # type: str
 ):
     response_code = FuzzyGet(response_payload, 'code').v
-    # order_id      = FuzzyGet(request_payload, 'order_id').v or FuzzyGet(response_payload, 'order_id').v
+    order_id      = FuzzyGet(request_payload, 'order_id').v or FuzzyGet(response_payload, 'order_id').v
     # province_code = FuzzyGet(request_payload, 'province_code').v or FuzzyGet(response_payload, 'order_id').v
     # city_code     = FuzzyGet(request_payload, 'city_code').v or FuzzyGet(response_payload, 'order_id').v
     # account_type  = FuzzyGet(request_payload, 'account_type').v or FuzzyGet(response_payload, 'order_id').v
@@ -526,7 +627,7 @@ def journallog_logger(
     # response_account_num = \
     #     FuzzyGet(request_payload, 'response_account_num').v or FuzzyGet(response_payload, 'order_id').v
 
-    if isinstance(response_code, int):
+    if response_code is not None:
         response_code = str(response_code)
     # if isinstance(province_code, int):
     #     province_code = str(province_code)
@@ -541,7 +642,6 @@ def journallog_logger(
     # if isinstance(response_account_num, int):
     #     response_account_num = str(response_account_num)
 
-    order_id              = None
     province_code         = None
     city_code             = None
     account_type          = None
@@ -624,6 +724,8 @@ class FuzzyGet(dict):
 
     def __init__(self, data, key, root=None):
         if root is None:
+            if isinstance(data, list):
+                data = {'data': data}
             self.key = key.replace('-', '').replace('_', '').lower()
             root = self
         for k, v in data.items():
@@ -632,11 +734,13 @@ class FuzzyGet(dict):
                 break
             dict.__setitem__(self, k, FuzzyGet(v, key=key, root=root))
 
-    def __new__(cls, data, *a, **kw):
+    def __new__(cls, data, key, root=None):
+        if root is None and isinstance(data, list):
+            data = {'data': data}
         if isinstance(data, dict):
             return dict.__new__(cls)
         if isinstance(data, (list, tuple)):
-            return data.__class__(cls(v, *a, **kw) for v in data)
+            return data.__class__(cls(v, key, root) for v in data)
         return cls
 
 
@@ -677,8 +781,8 @@ def has_fastapi_request_context():
 def try_json_loads(data):
     try:
         return jsonx.loads(data)
-    except (ValueError, TypeError):
-        return
+    except ValueError:
+        pass
 
 
 def try_json_dumps(data):

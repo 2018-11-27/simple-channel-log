@@ -5,14 +5,14 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Downloads](https://pepy.tech/badge/simple-channel-log)](https://pepy.tech/project/simple-channel-log)
 
-轻量高效的日志库，支持多级别日志记录、日志轮转、流水日志追踪及埋点日志功能，深度集成 Flask, FastAPI 以及 Requests 框架。
+轻量高效的日志库，支持多级别日志记录、日志轮转、流水日志追踪及埋点日志功能，深度集成 Flask，FastAPI，Requests 以及 Unirest 框架。
 
 ## 主要特性
 
 - 📅 支持按时间轮转日志（天/小时/分钟等）
 - 📊 提供多级别日志记录（DEBUG/INFO/WARNING/ERROR/CRITICAL）
 - 🌐 内置 Flask，FastAPI 中间件记录请求/响应流水日志
-- 📡 集成 Requests 会话记录外部调用流水日志
+- 📡 集成 Requests，Unirest 会话记录外部调用流水日志
 - 🔍 智能处理长字符串截断（超过1000字符自动标记）
 - 📁 自动创建分级日志目录结构
 - 💻 支持终端输出与文件存储分离控制
@@ -67,7 +67,7 @@ def index():
     return jsonify({"msg": "ok"})
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 初始化日志配置
     simple_channel_log.__init__("<your_appname>")
 
@@ -106,7 +106,7 @@ if __name__ == "__main__":
 
 ### Requests 外部调用追踪
 
-导入 `Requests` 库并初始化 `simple_channel_log` 即自动启用 Requests 外部调用追踪，将自动记录每个请求的调用信息。
+导入 `requests` 库并初始化 `simple_channel_log` 即自动启用 requests 外部调用追踪，将自动记录每个请求的调用信息。
 
 ```python
 # coding:utf-8
@@ -118,12 +118,36 @@ simple_channel_log.__init__("<your_appname>")
 
 # 发起请求后将自动记录外部流水日志
 r = requests.get(
-    'http://gqylpy.com/index',
+    "http://gqylpy.com/index",
     headers={
-        # 若要在日志中记录接口编码，你需要将接口编码传递到请求头
-        # "Method-Code": "<method_code>",
         # 若要在日志中记录被调用方的系统编码，你需要将被调用方的系统编码传递到请求头
-        # "T-Code": "<tcode>"
+        # "T-Code": "<tcode>",
+        # 若要在日志中记录被调用方的接口编码，你需要将被调用方的接口编码传递到请求头
+        # "Method-Code": "<method_code>"
+    }
+)
+```
+
+### Unirest 外部调用追踪
+
+导入 `unirest` 库并初始化 `simple_channel_log` 即自动启用 unirest 外部调用追踪，将自动记录每个请求的调用信息。
+
+```python
+# coding:utf-8
+import unirest
+import simple_channel_log
+
+# 初始化日志配置
+simple_channel_log.__init__("<your_appname>")
+
+# 发起请求后将自动记录外部流水日志
+r = unirest.get(
+    "http://gqylpy.com/index",
+    headers={
+        # 若要在日志中记录被调用方的系统编码，你需要将被调用方的系统编码传递到请求头
+        # "T-Code": "<tcode>",
+        # 若要在日志中记录被调用方的接口编码，你需要将被调用方的接口编码传递到请求头
+        # "Method-Code": "<method_code>"
     }
 )
 ```
