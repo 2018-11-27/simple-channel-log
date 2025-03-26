@@ -2,6 +2,7 @@
 import os
 import re
 import sys
+import time
 import uuid
 import json as jsonx
 import socket
@@ -174,7 +175,7 @@ def __init__(
     if unirest is not None:
         unirest.__request = JournallogUnirest(unirest.__request)
         unirest.USER_AGENT = syscode
-        threading.Timer(60, JournallogUnirest.reset_unirest_user_agent)
+        threading.Timer(15, JournallogUnirest.reset_unirest_user_agent)
 
     if Flask or FastAPI or requests or unirest:
         glog.__init__(
@@ -391,8 +392,7 @@ def journallog_flask(response):
             response_headers=dict(response.headers),
             response_payload=try_json_loads(response.get_data()) or {},
             http_status_code=response.status_code,
-            request_ip=request.remote_addr,
-            host_ip=parsed_url.hostname
+            request_ip=request.remote_addr
         )
 
     except Exception:
@@ -489,8 +489,7 @@ def journallog_request(func):
                 response_headers=dict(response.headers),
                 response_payload=response_payload,
                 http_status_code=response.status_code,
-                request_ip=parsed_url.hostname,
-                host_ip=socket.gethostbyname(socket.gethostname())
+                request_ip=None
             )
         except Exception:
             sys.stderr.write(
@@ -589,8 +588,7 @@ class JournallogUnirest(object):
             response_headers=dict(response.headers),
             response_payload=try_json_loads(response.raw_body) or {},
             http_status_code=response.code,
-            request_ip=parsed_url.hostname,
-            host_ip=socket.gethostbyname(socket.gethostname())
+            request_ip=None
         )
 
     @staticmethod
@@ -613,8 +611,7 @@ def journallog_logger(
         response_headers,  # type: dict
         response_payload,  # type: dict
         http_status_code,  # type: int
-        request_ip,        # type: str
-        host_ip            # type: str
+        request_ip         # type: str or None
 ):
     response_code = FuzzyGet(response_payload, 'code').v
     order_id      = FuzzyGet(request_payload, 'order_id').v or FuzzyGet(response_payload, 'order_id').v
@@ -641,13 +638,6 @@ def journallog_logger(
     #     response_account_type = str(response_account_type)
     # if isinstance(response_account_num, int):
     #     response_account_num = str(response_account_num)
-
-    province_code         = None
-    city_code             = None
-    account_type          = None
-    account_num           = None
-    response_account_type = None
-    response_account_num  = None
 
     request_headers_str  = try_json_dumps(request_headers)
     request_payload_str  = try_json_dumps(OmitLongString(request_payload))
@@ -681,23 +671,23 @@ def journallog_logger(
         'response_headers': response_headers_str,
         'response_payload': response_payload_str,
         'response_code': response_code,
-        'response_remark': None,
+        # 'response_remark': None,
         'http_status_code': str(http_status_code),
         'order_id': order_id,
-        'province_code': province_code,
-        'city_code': city_code,
+        # 'province_code': province_code,
+        # 'city_code': city_code,
         'total_time': total_time,
         'error_code': response_code,
         'request_ip': request_ip,
-        'host_ip': host_ip,
+        'host_ip': socket.gethostbyname(socket.gethostname()),
         'host_name': socket.gethostname(),
-        'account_type': account_type,
-        'account_num': account_num,
-        'response_account_type': response_account_type,
-        'response_account_num': response_account_num,
-        'user': None,
-        'tag': None,
-        'service_line': None
+        # 'account_type': account_type,
+        # 'account_num': account_num,
+        # 'response_account_type': response_account_type,
+        # 'response_account_num': response_account_num,
+        # 'user': None,
+        # 'tag': None,
+        # 'service_line': None
     }), gname='info_')
 
 

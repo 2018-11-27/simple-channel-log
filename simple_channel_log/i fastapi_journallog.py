@@ -164,8 +164,7 @@ class JournallogMiddleware(BaseHTTPMiddleware):
             response_headers=dict(response.headers),
             response_payload=response_payload,
             http_status_code=response.status_code,
-            request_ip=request.client.host,
-            host_ip=request.url.hostname,
+            request_ip=request.client.host
         )
 
 
