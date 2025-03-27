@@ -1,23 +1,15 @@
-import os
 import sys
 import json
 import uuid
 import traceback
+import threading
 
 from datetime import datetime
 
-if os.path.basename(sys.argv[0]) != 'setup.py':
-    import gqylpy_log as glog
-
-try:
-    from fastapi import FastAPI
-except ImportError:
-    fastapi = None
-else:
-    from fastapi import Request
-    from fastapi import Response
-    from starlette.middleware.base import BaseHTTPMiddleware
-    from starlette.middleware.base import RequestResponseEndpoint
+from fastapi import Request
+from fastapi import Response
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import RequestResponseEndpoint
 
 from types import ModuleType
 from typing import Type, TypeVar, ClassVar, Union, Dict, Any
@@ -25,9 +17,7 @@ from typing import Type, TypeVar, ClassVar, Union, Dict, Any
 if sys.version_info >= (3, 9):
     from typing import Annotated
 else:
-    class Annotated(metaclass=type('', (type,), {
-        '__new__': lambda *a: type.__new__(*a)()
-    })):
+    class Annotated(metaclass=type('', (type,), {'__new__': lambda *a: type.__new__(*a)()})):
         def __getitem__(self, *a): ...
 
 if sys.version_info >= (3, 10):
@@ -50,11 +40,13 @@ class JournallogMiddleware(BaseHTTPMiddleware):
     request_payload: Dict[str, Any]
     transaction_id:  UUID
 
+    local: ClassVar = threading.local()
+
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in ('/healthcheck', '/metrics') or not hasattr(self, 'appname'):
             return await call_next(request)
 
-        glog.fastapi_request = request
+        self.local.request = request
 
         try:
             await self.before(request)
@@ -70,6 +62,10 @@ class JournallogMiddleware(BaseHTTPMiddleware):
         try:
             body_iterator = getattr(response, 'body_iterator', None)
             if body_iterator is None:
+                try:
+                    del self.local.request
+                except AttributeError:
+                    pass
                 return response
 
             async for chunk in body_iterator:
@@ -83,7 +79,7 @@ class JournallogMiddleware(BaseHTTPMiddleware):
             )
 
         try:
-            del glog.fastapi_request
+            del self.local.request
         except AttributeError:
             pass
 

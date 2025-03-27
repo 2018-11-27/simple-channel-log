@@ -2,13 +2,13 @@
 import os
 import re
 import sys
-import time
 import uuid
 import json as jsonx
 import socket
 import inspect
 import warnings
 import functools
+import ipaddress
 import traceback
 import threading
 
@@ -40,13 +40,13 @@ try:
 except ImportError:
     FastAPI = None
 else:
-    fastapi_journallog_middleware = __import__(__package__ + '.i fastapi_journallog', fromlist=os).JournallogMiddleware
+    FastAPIJournallogMiddleware = __import__(__package__ + '.i fastapi_journallog', fromlist=os).JournallogMiddleware
 
     def wrap_fastapi_init_method(func):
         @functools.wraps(func)
         def inner(self, *a, **kw):
             func(self, *a, **kw)
-            self.add_middleware(fastapi_journallog_middleware)
+            self.add_middleware(FastAPIJournallogMiddleware)
         inner.__wrapped__ = func
         return inner
 
@@ -166,8 +166,8 @@ def __init__(
         )
 
     if FastAPI is not None:
-        fastapi_journallog_middleware.appname = appname
-        fastapi_journallog_middleware.syscode = syscode
+        FastAPIJournallogMiddleware.appname = appname
+        FastAPIJournallogMiddleware.syscode = syscode
 
     if requests is not None:
         requests.Session.request = journallog_request(requests.Session.request)
@@ -236,8 +236,8 @@ def logger(msg, *args, **extra):
                 FuzzyGet(getattr(g, '__request_headers__', {}), 'Method-Code').v or
                 FuzzyGet(getattr(g, '__request_payload__', {}), 'method_code').v
             )
-        elif has_fastapi_request_context() and hasattr(glog, 'fastapi_request'):
-            state = glog.fastapi_request.state
+        elif has_fastapi_request_context():
+            state = FastAPIJournallogMiddleware.local.request.state
             transaction_id = getattr(state, '__transaction_id__', None)
             method_code = (
                 getattr(state, 'method_code', None) or
@@ -249,39 +249,38 @@ def logger(msg, *args, **extra):
             method_code = None
 
         f_back = inspect.currentframe().f_back
-        level = f_back.f_code.co_name
+        level  = f_back.f_code.co_name
+
         f_back = f_back.f_back
+        module = f_back.f_globals['__name__']
+        name   = getattr(f_back.f_code, co_qualname)
+        line   = f_back.f_lineno
+
+        logger_ = '%s.%s.line%d' % (module, name, line)
 
         data = {
             'app_name': app_name,
             'level': level.upper(),
             'log_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
-            'logger': 'SimpleChannelLog',
-            'thread': threading.current_thread().ident,
+            'logger': logger_,
+            'thread': str(threading.current_thread().ident),
             'code_message': msg,
             'transaction_id': transaction_id,
             'method_code': method_code,
             'method_name': getattr(f_back.f_code, co_qualname),
             'error_code': None,
             'tag': None,
-            'host_name': socket.gethostname(),
-            'filename': f_back.f_code.co_filename,
-            'line': f_back.f_lineno
+            'host_name': socket.gethostname()
         }
 
         for k, v in extra.items():
-            if data.get(k) is not None:
-                continue
-            if sys.version_info.major < 3 and isinstance(v, dict):
-                for kk in v.copy():
-                    if isinstance(kk, str):
-                        v[kk.decode('UTF-8')] = v.pop(kk)
-            data[k] = try_json_dumps(v)
+            if data.get(k) is None:
+                data[k] = try_json_dumps(v) if isinstance(v, (dict, list, tuple)) else str(v)
 
         getattr(glog, level)(try_json_dumps(data), gname='code')
 
         if this.output_to_terminal:
-            getattr(glog, level)(msg, gname='stream')
+            getattr(glog, level)('[%s] %s' % (logger_, msg), gname='stream')
     except Exception:
         sys.stderr.write(traceback.format_exc() + '\nAn exception occurred while recording the log.\n')
 
@@ -433,10 +432,7 @@ def journallog_request(func):
             if has_flask_request_context():
                 transaction_id = getattr(g, '__transaction_id__', None)
             elif has_fastapi_request_context():
-                try:
-                    transaction_id = glog.fastapi_request.state.__transaction_id__
-                except AttributeError:
-                    transaction_id = None
+                transaction_id = getattr(FastAPIJournallogMiddleware.local.request.state, '__transaction_id__', None)
             else:
                 transaction_id = (
                     FuzzyGet(headers, 'Transaction-ID').v or
@@ -474,6 +470,10 @@ def journallog_request(func):
             except ValueError:
                 response_payload = {}
 
+            request_ip = parsed_url.hostname
+            if not is_valid_ip(request_ip):
+                request_ip = None
+
             journallog_logger(
                 transaction_id=transaction_id,
                 dialog_type='out',
@@ -489,7 +489,7 @@ def journallog_request(func):
                 response_headers=dict(response.headers),
                 response_payload=response_payload,
                 http_status_code=response.status_code,
-                request_ip=None
+                request_ip=request_ip
             )
         except Exception:
             sys.stderr.write(
@@ -546,10 +546,7 @@ class JournallogUnirest(object):
         if has_flask_request_context():
             transaction_id = getattr(g, '__transaction_id__', None)
         elif has_fastapi_request_context():
-            try:
-                transaction_id = glog.fastapi_request.state.__transaction_id__
-            except AttributeError:
-                transaction_id = None
+            transaction_id = getattr(FastAPIJournallogMiddleware.local.request.state, '__transaction_id__', None)
         else:
             transaction_id = (
                 FuzzyGet(request_headers, 'Transaction-ID').v or
@@ -573,6 +570,10 @@ class JournallogUnirest(object):
             f_back = inspect.currentframe().f_back.f_back.f_back.f_back
             method_name = getattr(f_back.f_code, co_qualname)
 
+        request_ip = parsed_url.hostname
+        if not is_valid_ip(request_ip):
+            request_ip = None
+
         journallog_logger(
             transaction_id=request_headers['Transaction-ID'],
             dialog_type='out',
@@ -588,7 +589,7 @@ class JournallogUnirest(object):
             response_headers=dict(response.headers),
             response_payload=try_json_loads(response.raw_body) or {},
             http_status_code=response.code,
-            request_ip=None
+            request_ip=request_ip
         )
 
     @staticmethod
@@ -611,7 +612,7 @@ def journallog_logger(
         response_headers,  # type: dict
         response_payload,  # type: dict
         http_status_code,  # type: int
-        request_ip         # type: str or None
+        request_ip         # type: str
 ):
     response_code = FuzzyGet(response_payload, 'code').v
     order_id      = FuzzyGet(request_payload, 'order_id').v or FuzzyGet(response_payload, 'order_id').v
@@ -654,7 +655,7 @@ def journallog_logger(
         'app_name': this.appname + '_info',
         'level': 'INFO',
         'log_time': response_time_str,
-        'logger': 'SimpleChannelLog',
+        'logger': __package__,
         'thread': str(threading.current_thread().ident),
         'transaction_id': transaction_id,
         'dialog_type': dialog_type,
@@ -765,7 +766,17 @@ def has_flask_request_context():
 
 
 def has_fastapi_request_context():
-    return FastAPI is not None and hasattr(glog, 'fastapi_request')
+    return FastAPI is not None and hasattr(FastAPIJournallogMiddleware.local, 'request')
+
+
+def is_valid_ip(ip):
+    if sys.version_info.major < 3 and isinstance(ip, str):
+        ip = ip.decode('UTF-8')
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return True
 
 
 def try_json_loads(data):
