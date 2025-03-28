@@ -97,20 +97,11 @@ def __init__(
         raise ValueError('parameter appname "%s" is illegal.' % appname)
 
     if syscode is not deprecated:
-        warnings.warn(
-            'parameter "syscode" is deprecated.',
-            category=DeprecationWarning, stacklevel=2
-        )
+        warnings.warn('parameter "syscode" is deprecated.', category=DeprecationWarning, stacklevel=2)
     if enable_journallog_in is not deprecated:
-        warnings.warn(
-            'parameter "enable_journallog_in" is deprecated.',
-            category=DeprecationWarning, stacklevel=2
-        )
+        warnings.warn('parameter "enable_journallog_in" is deprecated.', category=DeprecationWarning, stacklevel=2)
     if enable_journallog_out is not deprecated:
-        warnings.warn(
-            'parameter "enable_journallog_out" is deprecated.',
-            category=DeprecationWarning, stacklevel=2
-        )
+        warnings.warn('parameter "enable_journallog_out" is deprecated.', category=DeprecationWarning, stacklevel=2)
     if stream is not deprecated:
         warnings.warn(
             'parameter "stream" will be deprecated soon, replaced to "output_to_terminal".',
@@ -415,19 +406,21 @@ def journallog_request(func):
                 request_payload.update(params)
 
             if data is not None:
-                if is_char(data):
-                    data = try_json_loads(data)
-                if isinstance(data, dict):
-                    request_payload.update(data)
-                elif isinstance(data, (list, tuple)):
-                    request_payload['data'] = data
+                request_data = data
+                if is_char(request_data):
+                    request_data = try_json_loads(request_data)
+                if isinstance(request_data, dict):
+                    request_payload.update(request_data)
+                elif isinstance(request_data, (list, tuple)):
+                    request_payload['data'] = request_data
             elif json is not None:
-                if is_char(json):
-                    json = try_json_loads(json)
-                if isinstance(json, dict):
-                    request_payload.update(json)
-                elif isinstance(json, (list, tuple)):
-                    request_payload['data'] = json
+                request_json = json
+                if is_char(request_json):
+                    request_json = try_json_loads(request_json)
+                if isinstance(request_json, dict):
+                    request_payload.update(request_json)
+                elif isinstance(request_json, (list, tuple)):
+                    request_payload['data'] = request_json
 
             if has_flask_request_context():
                 transaction_id = getattr(g, '__transaction_id__', None)
