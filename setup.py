@@ -8,7 +8,7 @@ if sys.version_info.major < 3:
 
 setuptools.setup(
     name='simple-channel-log',
-    version='1.6.3',
+    version='1.7alpha1',
     author='Unnamed great master',
     author_email='<gqylpy@outlook.com>',
     license='MIT',
@@ -28,7 +28,8 @@ setuptools.setup(
         'flask': ['Flask>=0.10'],
         'requests': ['requests>=2.19'],
         'fastapi': ['fastapi>=0.83.0'],
-        'unirest': ['unirest>=1.0.5']
+        'unirest': ['unirest>=1.0.5'],
+        'ctec-consumer': ['ctec-consumer>=0.1']
     },
     classifiers=[
         'Development Status :: 3 - Alpha',

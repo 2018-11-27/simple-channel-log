@@ -5,7 +5,8 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Downloads](https://pepy.tech/badge/simple-channel-log)](https://pepy.tech/project/simple-channel-log)
 
-轻量高效的日志库，支持多级别日志记录、日志轮转、流水日志追踪及埋点日志功能，深度集成 Flask，FastAPI，Requests 以及 Unirest 框架。
+轻量高效的日志库，支持多级别日志记录、日志轮转、流水日志追踪及埋点日志功能，深度集成 Flask，FastAPI，Requests，Unirest 以及
+CTEC-Consumer 框架。
 
 ## 主要特性
 
@@ -13,6 +14,7 @@
 - 📊 提供多级别日志记录（DEBUG/INFO/WARNING/ERROR/CRITICAL）
 - 🌐 内置 Flask，FastAPI 中间件记录请求/响应流水日志
 - 📡 集成 Requests，Unirest 会话记录外部调用流水日志
+- 📡 集成 CTEC-Consumer 记录消费者流水日志
 - 🔍 智能处理长字符串截断（超过1000字符自动标记）
 - 📁 自动创建分级日志目录结构
 - 💻 支持终端输出与文件存储分离控制

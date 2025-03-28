@@ -62,12 +62,31 @@ try:
 except ImportError:
     unirest = None
 
+try:
+    from ctec_consumer.dummy.ctec_consumer import Consumer as CTECConsumer
+except ImportError:
+    CTECConsumer = None
+else:
+    def wrap_register_worker(func):
+        @functools.wraps(func)
+        def inner(self, worker):
+            func(self, JournallogCectConsumer(worker, topic=self.queue))
+        inner.__wrapped__ = func
+        return inner
+    CTECConsumer.register_worker = wrap_register_worker(CTECConsumer.register_worker)
+
 if sys.version_info.major < 3:
     from urlparse import urlparse, parse_qs
     is_char = lambda x: isinstance(x, (str, unicode))
 else:
     from urllib.parse import urlparse, parse_qs
     is_char = lambda x: isinstance(x, str)
+
+from typing import TypeVar, Union
+
+Str = TypeVar('Str', bound=Union[str, None])
+Int = TypeVar('Int', bound=Union[int, None])
+Dict = TypeVar('Dict', bound=Union[dict, None])
 
 co_qualname = 'co_qualname' if sys.version_info >= (3, 11) else 'co_name'
 
@@ -390,8 +409,8 @@ def journallog_flask(response):
             traceback.format_exc() +
             '\nAn exception occurred while recording the internal transaction log.\n'
         )
-    finally:
-        return response
+
+    return response
 
 
 def journallog_request(func):
@@ -435,11 +454,9 @@ def journallog_request(func):
 
             if headers is None:
                 headers = {'User-Agent': this.syscode, 'Transaction-ID': transaction_id}
-            else:
-                FullDelete(headers, 'User-Agent')
-                FullDelete(headers, 'Transaction-ID')
-                headers['User-Agent'] = this.syscode
-                headers['Transaction-ID'] = transaction_id
+            elif isinstance(headers, dict):
+                headers.setdefault('User-Agent', this.syscode)
+                headers.setdefault('Transaction-ID', transaction_id)
 
             request_time = datetime.now()
         except Exception:
@@ -489,8 +506,8 @@ def journallog_request(func):
                 traceback.format_exc() +
                 '\nAn exception occurred while recording the external transaction log.\n'
             )
-        finally:
-            return response
+
+        return response
 
     inner.__wrapped__ = func
     return inner
@@ -522,8 +539,8 @@ class JournallogUnirest(object):
                 traceback.format_exc() +
                 '\nAn exception occurred while recording the external transaction log.\n'
             )
-        finally:
-            return response
+
+        return response
 
     @staticmethod
     def before(query_params, request_params, request_headers):
@@ -548,11 +565,9 @@ class JournallogUnirest(object):
             )
         if request_headers is None:
             request_headers = {'User-Agent': this.syscode, 'Transaction-ID': transaction_id}
-        else:
-            FullDelete(request_headers, 'User-Agent')
-            FullDelete(request_headers, 'Transaction-ID')
-            request_headers['User-Agent'] = this.syscode
-            request_headers['Transaction-ID'] = transaction_id
+        elif isinstance(request_headers, dict):
+            request_headers.setdefault('User-Agent', this.syscode)
+            request_headers.setdefault('Transaction-ID', transaction_id)
 
         return request_headers, request_payload
 
@@ -590,22 +605,64 @@ class JournallogUnirest(object):
         unirest.USER_AGENT = this.syscode
 
 
+class JournallogCectConsumer(object):
+
+    def __init__(self, func, topic):
+        self.__wrapped__ = func
+        self.topic = topic
+
+    def __call__(self, message, *a, **kw):
+        request_time = datetime.now()
+        code = self.__wrapped__(message, *a, **kw)
+        try:
+            self.after(request_time, try_json_loads(message) or message, code)
+        except Exception:
+            sys.stderr.write(
+                traceback.format_exc() +
+                '\nAn exception occurred while recording the external transaction log.\n'
+            )
+        return code
+
+    def after(self, request_time, message, code):
+        journallog_logger(
+            transaction_id=FuzzyGet(message, 'transaction_id').v or uuid.uuid4().hex,
+            dialog_type='in',
+            address=None,
+            fcode=FuzzyGet(message, 'fcode').v,
+            tcode=this.syscode,
+            method_code=None,
+            method_name=self.__wrapped__.__name__,
+            http_method=None,
+            request_time=request_time,
+            request_headers=None,
+            request_payload=None,
+            response_headers=None,
+            response_payload=None,
+            http_status_code=None,
+            request_ip=None,
+            topic=self.topic,
+            message=jsonx.dumps(message, ensure_ascii=False),
+            response_code=code
+        )
+
+
 def journallog_logger(
-        transaction_id,    # type: str
-        dialog_type,       # type: str
-        address,           # type: str
-        fcode,             # type: str
-        tcode,             # type: str
-        method_code,       # type: str
-        method_name,       # type: str
-        http_method,       # type: str
+        transaction_id,    # type: Str
+        dialog_type,       # type: Str
+        address,           # type: Str
+        fcode,             # type: Str
+        tcode,             # type: Str
+        method_code,       # type: Str
+        method_name,       # type: Str
+        http_method,       # type: Str
         request_time,      # type: datetime
-        request_headers,   # type: dict
-        request_payload,   # type: dict
-        response_headers,  # type: dict
-        response_payload,  # type: dict
-        http_status_code,  # type: int
-        request_ip         # type: str
+        request_headers,   # type: Dict
+        request_payload,   # type: Dict
+        response_headers,  # type: Dict
+        response_payload,  # type: Dict
+        http_status_code,  # type: Int
+        request_ip,        # type: Str
+        **extra
 ):
     response_code = FuzzyGet(response_payload, 'code').v
     order_id      = FuzzyGet(request_payload, 'order_id').v or FuzzyGet(response_payload, 'order_id').v
@@ -644,7 +701,7 @@ def journallog_logger(
     total_time = (response_time - request_time).total_seconds()
     total_time = int(round(total_time * 1000))
 
-    glog.info(try_json_dumps({
+    data = {
         'app_name': this.appname + '_info',
         'level': 'INFO',
         'log_time': response_time_str,
@@ -682,7 +739,10 @@ def journallog_logger(
         # 'user': None,
         # 'tag': None,
         # 'service_line': None
-    }), gname='info_')
+    }
+    data.update(extra)
+
+    glog.info(try_json_dumps(data), gname='info_')
 
 
 class OmitLongString(dict):
@@ -725,32 +785,6 @@ class FuzzyGet(dict):
             return dict.__new__(cls)
         if isinstance(data, (list, tuple)):
             return data.__class__(cls(v, key, root) for v in data)
-        return cls
-
-
-class FullDelete(dict):
-
-    def __init__(self, data, key, root=None):
-        if root is None:
-            self.key = key.replace('-', '').replace('_', '').lower()
-            root = self
-        result = []
-        for k, v in data.items():
-            if k.replace('-', '').replace('_', '').lower() == root.key:
-                result.append(k)
-                continue
-            dict.__setitem__(self, k, FullDelete(v, key=key, root=root))
-        for k in result:
-            try:
-                del data[k]
-            except (KeyError, RuntimeError):
-                pass
-
-    def __new__(cls, data, *a, **kw):
-        if isinstance(data, dict):
-            return dict.__new__(cls)
-        if isinstance(data, (list, tuple)):
-            return data.__class__(cls(v, *a, **kw) for v in data)
         return cls
 
 
