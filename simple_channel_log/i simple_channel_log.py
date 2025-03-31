@@ -424,22 +424,14 @@ def journallog_request(func):
             if isinstance(params, dict):
                 request_payload.update(params)
 
-            if data is not None:
-                request_data = data
-                if is_char(request_data):
-                    request_data = try_json_loads(request_data)
-                if isinstance(request_data, dict):
-                    request_payload.update(request_data)
-                elif isinstance(request_data, (list, tuple)):
-                    request_payload['data'] = request_data
-            elif json is not None:
-                request_json = json
-                if is_char(request_json):
-                    request_json = try_json_loads(request_json)
-                if isinstance(request_json, dict):
-                    request_payload.update(request_json)
-                elif isinstance(request_json, (list, tuple)):
-                    request_payload['data'] = request_json
+            datax = data or json
+
+            if is_char(datax):
+                datax = try_json_loads(datax)
+            if isinstance(datax, dict):
+                request_payload.update(datax)
+            elif isinstance(datax, (list, tuple)):
+                request_payload['data'] = datax
 
             if has_flask_request_context():
                 transaction_id = getattr(g, '__transaction_id__', None)

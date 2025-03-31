@@ -8,7 +8,7 @@ if sys.version_info.major < 3:
 
 setuptools.setup(
     name='simple-channel-log',
-    version='1.7',
+    version='1.7.1',
     author='Unnamed great master',
     author_email='<gqylpy@outlook.com>',
     license='MIT',
@@ -23,7 +23,10 @@ setuptools.setup(
     long_description_content_type='text/markdown',
     packages=['simple_channel_log'],
     python_requires='>=2.7',
-    install_requires=['gqylpy_log==0.0a1'],
+    install_requires=[
+        'gqylpy_log==0.0a1',
+        'ipaddress>=1.0.23,<2.0'
+    ],
     extras_require={
         'flask': ['Flask>=0.10'],
         'requests': ['requests>=2.19'],
