@@ -77,8 +77,6 @@ if __name__ == "__main__":
     app.run()
 ```
 
-如果调用方已经将接口编码传递到请求头 request.headers["Method-Code"]，则会自动获取（优先级低）。
-
 ### FastAPI 流水日志
 
 导入 `FastAPI` 库并初始化 `simple_channel_log` 即自动启用 FastAPI 流水日志。
