@@ -8,7 +8,7 @@ if sys.version_info.major < 3:
 
 setuptools.setup(
     name='simple-channel-log',
-    version='1.7.1',
+    version='1.7.2',
     author='Unnamed great master',
     author_email='<gqylpy@outlook.com>',
     license='MIT',
@@ -17,7 +17,7 @@ setuptools.setup(
     },
     description='''
         轻量高效的日志库，支持多级别日志记录、日志轮转、流水日志追踪及埋点日志功能，深度集成
-        Flask，FastAPI，Requests 以及 Unirest 框架。
+        Flask，FastAPI，Requests，Unirest 以及 CTEC-Consumer 框架。
     '''.strip().replace('\n       ', ''),
     long_description=open('README.md', encoding='utf8').read(),
     long_description_content_type='text/markdown',

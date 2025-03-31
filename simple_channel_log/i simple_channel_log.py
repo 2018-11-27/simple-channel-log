@@ -8,13 +8,13 @@ import socket
 import inspect
 import warnings
 import functools
-import ipaddress
 import traceback
 import threading
 
 from datetime import datetime
 
 if os.path.basename(sys.argv[0]) != 'setup.py':
+    import ipaddress
     import gqylpy_log as glog
 
 try:
@@ -92,6 +92,8 @@ co_qualname = 'co_qualname' if sys.version_info >= (3, 11) else 'co_name'
 
 that = sys.modules[__package__]
 this = sys.modules[__name__]
+
+that.external_log = lambda *a, **kw: None
 
 deprecated = object()
 
@@ -627,13 +629,12 @@ class JournallogCectConsumer(object):
             http_method=None,
             request_time=request_time,
             request_headers=None,
-            request_payload=None,
+            request_payload=message,
             response_headers=None,
             response_payload=None,
             http_status_code=None,
             request_ip=None,
             topic=self.topic,
-            message=jsonx.dumps(message, ensure_ascii=False),
             response_code=code
         )
 
