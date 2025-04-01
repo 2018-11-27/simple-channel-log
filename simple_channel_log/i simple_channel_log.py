@@ -609,7 +609,7 @@ class JournallogCectConsumer(object):
         request_time = datetime.now()
         code = self.__wrapped__(message, *a, **kw)
         try:
-            self.after(request_time, try_json_loads(message) or message, code)
+            self.after(request_time, try_json_loads(message.body) or message.body, code)
         except Exception:
             sys.stderr.write(
                 traceback.format_exc() +
