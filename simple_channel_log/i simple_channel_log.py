@@ -802,7 +802,7 @@ def is_valid_ip(ip):
 def try_json_loads(data):
     try:
         return jsonx.loads(data)
-    except ValueError:
+    except (ValueError, TypeError):
         pass
 
 
