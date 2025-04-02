@@ -613,7 +613,7 @@ class JournallogCectConsumer(object):
         except Exception:
             sys.stderr.write(
                 traceback.format_exc() +
-                '\nAn exception occurred while recording the external transaction log.\n'
+                '\nAn exception occurred while recording the internal transaction log.\n'
             )
         return code
 
@@ -683,6 +683,11 @@ def journallog_logger(
     # if isinstance(response_account_num, int):
     #     response_account_num = str(response_account_num)
 
+    if isinstance(http_status_code, int) and 200 <= http_status_code <= 600:
+        http_status_code = str(http_status_code)
+    else:
+        http_status_code = None
+
     request_headers_str  = try_json_dumps(request_headers)
     request_payload_str  = try_json_dumps(OmitLongString(request_payload))
     response_headers_str = try_json_dumps(response_headers)
@@ -716,7 +721,7 @@ def journallog_logger(
         'response_payload': response_payload_str,
         'response_code': response_code,
         # 'response_remark': None,
-        'http_status_code': str(http_status_code),
+        'http_status_code': http_status_code,
         'order_id': order_id,
         # 'province_code': province_code,
         # 'city_code': city_code,
