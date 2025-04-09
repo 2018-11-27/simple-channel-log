@@ -656,41 +656,10 @@ def journallog_logger(
         request_ip,        # type: Str
         **extra
 ):
-    response_code = FuzzyGet(response_payload, 'code').v
-    order_id      = FuzzyGet(request_payload, 'order_id').v or FuzzyGet(response_payload, 'order_id').v
-    # province_code = FuzzyGet(request_payload, 'province_code').v or FuzzyGet(response_payload, 'order_id').v
-    # city_code     = FuzzyGet(request_payload, 'city_code').v or FuzzyGet(response_payload, 'order_id').v
-    # account_type  = FuzzyGet(request_payload, 'account_type').v or FuzzyGet(response_payload, 'order_id').v
-    # account_num   = FuzzyGet(request_payload, 'account_num').v or FuzzyGet(response_payload, 'order_id').v
-    # response_account_type = \
-    #     FuzzyGet(request_payload, 'response_account_type').v or FuzzyGet(response_payload, 'order_id').v
-    # response_account_num = \
-    #     FuzzyGet(request_payload, 'response_account_num').v or FuzzyGet(response_payload, 'order_id').v
-
-    if response_code is not None:
-        response_code = str(response_code)
-    # if isinstance(province_code, int):
-    #     province_code = str(province_code)
-    # if isinstance(city_code, int):
-    #     city_code = str(city_code)
-    # if isinstance(account_type, int):
-    #     account_type = str(account_type)
-    # if isinstance(account_num, int):
-    #     account_num = str(account_num)
-    # if isinstance(response_account_type, int):
-    #     response_account_type = str(response_account_type)
-    # if isinstance(response_account_num, int):
-    #     response_account_num = str(response_account_num)
-
-    if isinstance(http_status_code, int) and 200 <= http_status_code <= 600:
-        http_status_code = str(http_status_code)
-    else:
-        http_status_code = None
-
-    request_headers_str  = try_json_dumps(request_headers)
-    request_payload_str  = try_json_dumps(OmitLongString(request_payload))
-    response_headers_str = try_json_dumps(response_headers)
-    response_payload_str = try_json_dumps(OmitLongString(response_payload))
+    account_num           = fuzzy_get_many(request_payload, 'phone', 'phone_num', 'number', 'accnbr')
+    response_account_num  = fuzzy_get_many(response_payload, 'phone', 'phone_num', 'accnbr', 'receive_phone')
+    account_type          = None if account_num is None else '11'
+    response_account_type = None if response_account_num is None else '11'
 
     response_time = datetime.now()
     response_time_str = response_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
@@ -713,31 +682,36 @@ def journallog_logger(
         'method_name': method_name,
         'http_method': http_method,
         'request_time': request_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3],
-        'request_headers': request_headers_str,
-        'request_payload': request_payload_str,
+        'request_headers': try_json_dumps(request_headers),
+        'request_payload': try_json_dumps(OmitLongString(request_payload)),
         'response_time': response_time_str,
-        'response_headers': response_headers_str,
-        'response_payload': response_payload_str,
-        'response_code': response_code,
-        # 'response_remark': None,
+        'response_headers': try_json_dumps(response_headers),
+        'response_payload': try_json_dumps(OmitLongString(response_payload)),
+        'response_code': FuzzyGet(response_payload, 'code').v,
+        'response_remark': None,
         'http_status_code': http_status_code,
-        'order_id': order_id,
-        # 'province_code': province_code,
-        # 'city_code': city_code,
-        'total_time': total_time,
-        'error_code': response_code,
+        'order_id': fuzzy_get_many((request_payload, response_payload), 'order_id', 'ht_id'),
+        'province_code': FuzzyGet(request_payload, 'province_code').v or FuzzyGet(response_payload, 'province_code').v,
+        'city_code': FuzzyGet(request_payload, 'city_code').v or FuzzyGet(response_payload, 'city_code').v,
+        'error_code': None,
         'request_ip': request_ip,
         'host_ip': socket.gethostbyname(socket.gethostname()),
         'host_name': socket.gethostname(),
-        # 'account_type': account_type,
-        # 'account_num': account_num,
-        # 'response_account_type': response_account_type,
-        # 'response_account_num': response_account_num,
-        # 'user': None,
-        # 'tag': None,
-        # 'service_line': None
+        'account_type': account_type,
+        'account_num': account_num,
+        'response_account_type': response_account_type,
+        'response_account_num': response_account_num,
+        'user': None,
+        'tag': None,
+        'service_line': None
     }
     data.update(extra)
+
+    for k, v in data.items():
+        if not (v is None or is_char(v)):
+            data[k] = str(v)
+
+    data['total_time'] = total_time
 
     glog.info(try_json_dumps(data), gname='info_')
 
@@ -765,7 +739,7 @@ class FuzzyGet(dict):
 
     def __init__(self, data, key, root=None):
         if root is None:
-            if isinstance(data, list):
+            if isinstance(data, (list, tuple)):
                 data = {'data': data}
             self.key = key.replace('-', '').replace('_', '').lower()
             root = self
@@ -776,7 +750,7 @@ class FuzzyGet(dict):
             dict.__setitem__(self, k, FuzzyGet(v, key=key, root=root))
 
     def __new__(cls, data, key, root=None):
-        if root is None and isinstance(data, list):
+        if root is None and isinstance(data, (list, tuple)):
             data = {'data': data}
         if isinstance(data, dict):
             return dict.__new__(cls)
@@ -815,3 +789,10 @@ def try_json_dumps(data):
         return jsonx.dumps(data, ensure_ascii=False)
     except (TypeError, ValueError):
         return str(data)
+
+
+def fuzzy_get_many(data, *keys):
+    for k in keys:
+        v = FuzzyGet(data, k).v
+        if v is not None:
+            return v
