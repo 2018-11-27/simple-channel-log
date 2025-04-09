@@ -229,7 +229,7 @@ def logger(msg, *args, **extra):
         args, extra = OmitLongString(args), OmitLongString(extra)
 
         if sys.version_info.major < 3 and isinstance(msg, str):
-            msg = msg.decode('UTF-8')
+            msg = msg.decode('utf8', errors='replace')
 
         if is_char(msg):
             try:
@@ -728,7 +728,7 @@ class OmitLongString(dict):
         if isinstance(data, (list, tuple)):
             return data.__class__(cls(v) for v in data)
         if sys.version_info.major < 3 and isinstance(data, str):
-            data = data.decode('UTF-8')
+            data = data.decode('utf8', errors='replace')
         if is_char(data) and len(data) > 1000:
             data = '<Ellipsis>'
         return data
@@ -741,10 +741,10 @@ class FuzzyGet(dict):
         if root is None:
             if isinstance(data, (list, tuple)):
                 data = {'data': data}
-            self.key = key.replace('-', '').replace('_', '').lower()
+            self.key = key.replace(' ', '').replace('-', '').replace('_', '').lower()
             root = self
         for k, v in data.items():
-            if k.replace('-', '').replace('_', '').lower() == root.key:
+            if k.replace(' ', '').replace('-', '').replace('_', '').lower() == root.key:
                 root.v = data[k]
                 break
             dict.__setitem__(self, k, FuzzyGet(v, key=key, root=root))
@@ -769,7 +769,7 @@ def has_fastapi_request_context():
 
 def is_valid_ip(ip):
     if sys.version_info.major < 3 and isinstance(ip, str):
-        ip = ip.decode('UTF-8')
+        ip = ip.decode('utf8', errors='replace')
     try:
         ipaddress.ip_address(ip)
     except ValueError:
