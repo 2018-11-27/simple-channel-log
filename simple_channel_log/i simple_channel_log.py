@@ -482,7 +482,7 @@ def journallog_request(func):
                 dialog_type='out',
                 address=parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path,
                 fcode=this.syscode,
-                tcode=FuzzyGet(headers, 'T-Code').v or FuzzyGet(request_payload, 'tcode').v,
+                tcode=get_tcode(parsed_url, headers, request_payload),
                 method_code=FuzzyGet(headers, 'Method-Code').v or FuzzyGet(request_payload, 'method_code').v,
                 method_name=method_name,
                 http_method=method,
@@ -580,7 +580,7 @@ class JournallogUnirest(object):
             dialog_type='out',
             address=parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path,
             fcode=this.syscode,
-            tcode=FuzzyGet(request_headers, 'T-Code').v or FuzzyGet(request_payload, 'tcode').v,
+            tcode=get_tcode(parsed_url, request_headers, request_payload),
             method_code=FuzzyGet(request_headers, 'Method-Code').v or FuzzyGet(request_payload, 'method_code').v,
             method_name=method_name,
             http_method=method,
@@ -759,12 +759,25 @@ class FuzzyGet(dict):
         return cls
 
 
+def get_tcode(parsed_url, request_headers, request_payload):
+    tcode = FuzzyGet(request_headers, 'T-Code').v
+    if tcode is None:
+        tcode = parsed_url.hostname.split('.')[0]
+        if not is_syscode(tcode):
+            tcode = FuzzyGet(request_payload, 'tcode').v
+    return tcode.upper()
+
+
 def has_flask_request_context():
     return Flask is not None and has_request_context()
 
 
 def has_fastapi_request_context():
     return FastAPI is not None and hasattr(FastAPIJournallogMiddleware.local, 'request')
+
+
+def is_syscode(x):
+    return len(x) == 10 and x[0].isalpha() and x[1:].isdigit()
 
 
 def is_valid_ip(ip):

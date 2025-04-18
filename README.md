@@ -118,9 +118,10 @@ simple_channel_log.__init__("<your_appname>")
 
 # 发起请求后将自动记录外部流水日志
 r = requests.get(
-    "http://gqylpy.com/index",
+    "https://A186010101.dzqd.lio/index",
     headers={
         # 若要在日志中记录被调用方的系统编码，你需要将被调用方的系统编码传递到请求头
+        # 若被调用方的系统编码已经在 URL 中体现（如域名 `A186010101.dzqd.lio` 中的前缀），则自动从 URL 中提取（优先级低）
         # "T-Code": "<tcode>",
         # 若要在日志中记录被调用方的接口编码，你需要将被调用方的接口编码传递到请求头
         # "Method-Code": "<method_code>"
@@ -142,9 +143,10 @@ simple_channel_log.__init__("<your_appname>")
 
 # 发起请求后将自动记录外部流水日志
 r = unirest.get(
-    "http://gqylpy.com/index",
+    "https://A186010101.dzqd.lio/index",
     headers={
         # 若要在日志中记录被调用方的系统编码，你需要将被调用方的系统编码传递到请求头
+        # 若被调用方的系统编码已经在 URL 中体现（如域名 `A186010101.dzqd.lio` 中的前缀），则自动从 URL 中提取（优先级低）
         # "T-Code": "<tcode>",
         # 若要在日志中记录被调用方的接口编码，你需要将被调用方的接口编码传递到请求头
         # "Method-Code": "<method_code>"
