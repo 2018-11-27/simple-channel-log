@@ -765,7 +765,7 @@ def get_tcode(parsed_url, request_headers, request_payload):
         tcode = parsed_url.hostname.split('.')[0]
         if not is_syscode(tcode):
             tcode = FuzzyGet(request_payload, 'tcode').v
-    return tcode.upper()
+    return tcode and tcode.upper()
 
 
 def has_flask_request_context():
