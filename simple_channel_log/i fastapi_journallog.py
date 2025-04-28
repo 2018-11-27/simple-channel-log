@@ -134,16 +134,18 @@ class JournallogMiddleware(BaseHTTPMiddleware):
 
         fcode: Str = FuzzyGet(self.request_headers, 'User-Agent').v
 
-        method_code: str = (
+        try:
+            view_func = request.scope['route'].endpoint
+        except (KeyError, AttributeError):
+            view_func = None
+
+        method_code: Str = (
+            getattr(view_func, '__method_code__', None) or
             getattr(request.state, 'method_code', None) or
             FuzzyGet(self.request_headers, 'Method-Code').v or
             FuzzyGet(self.request_payload, 'method_code').v
         )
-
-        try:
-            method_name: Str = request.scope['route'].endpoint.__name__
-        except (KeyError, AttributeError):
-            method_name = None
+        method_name = getattr(view_func, '__name__', None)
 
         simple_channel_log.journallog_logger(
             transaction_id=self.transaction_id,
@@ -181,23 +183,27 @@ class OmitLongString(dict):
 
 
 class FuzzyGet(dict):
-    v: Any = None
+    v = None
 
-    def __init__(self, data, key, root=None) -> None:
+    def __init__(self, data, key, root=None):
         if root is None:
-            self.key = key.replace('-', '').replace('_', '').lower()
+            if isinstance(data, (list, tuple)):
+                data = {'data': data}
+            self.key = key.replace(' ', '').replace('-', '').replace('_', '').lower()
             root = self
         for k, v in data.items():
-            if k.replace('-', '').replace('_', '').lower() == root.key:
+            if k.replace(' ', '').replace('-', '').replace('_', '').lower() == root.key:
                 root.v = data[k]
                 break
             dict.__setitem__(self, k, FuzzyGet(v, key=key, root=root))
 
-    def __new__(cls, data, *a, **kw) -> Type[dict]:
+    def __new__(cls, data, key, root=None):
+        if root is None and isinstance(data, (list, tuple)):
+            data = {'data': data}
         if isinstance(data, dict):
             return dict.__new__(cls)
         if isinstance(data, (list, tuple)):
-            return data.__class__(cls(v, *a, **kw) for v in data)
+            return data.__class__(cls(v, key, root) for v in data)
         return cls
 
 

@@ -78,9 +78,11 @@ else:
 if sys.version_info.major < 3:
     from urlparse import urlparse, parse_qs
     is_char = lambda x: isinstance(x, (str, unicode))
+    py2 = True
 else:
     from urllib.parse import urlparse, parse_qs
     is_char = lambda x: isinstance(x, str)
+    py2 = False
 
 from typing import TypeVar, Union
 
@@ -145,7 +147,7 @@ def __init__(
         'name': 'TimedRotatingFileHandler',
         'level': 'DEBUG',
         'filename': '%s/debug/%s_code-debug.log' % (logdir, appname),
-        'encoding': 'UTF-8',
+        'encoding': 'utf8',
         'when': when,
         'interval': interval,
         'backupCount': backup_count,
@@ -157,7 +159,7 @@ def __init__(
             'name': 'TimedRotatingFileHandler',
             'level': level.upper(),
             'filename': '%s/%s_code-%s.log' % (logdir, appname, level),
-            'encoding': 'UTF-8',
+            'encoding': 'utf8',
             'when': when,
             'interval': interval,
             'backupCount': backup_count,
@@ -196,7 +198,7 @@ def __init__(
                 'name': 'TimedRotatingFileHandler',
                 'level': 'INFO',
                 'filename': '%s/%s_info-info.log' % (logdir, appname),
-                'encoding': 'UTF-8',
+                'encoding': 'utf8',
                 'when': when,
                 'interval': interval,
                 'backupCount': backup_count,
@@ -210,7 +212,7 @@ def __init__(
             'name': 'TimedRotatingFileHandler',
             'level': 'DEBUG',
             'filename': '%s/trace/%s_trace-trace.log' % (logdir, appname),
-            'encoding': 'UTF-8',
+            'encoding': 'utf8',
             'when': when,
             'interval': interval,
             'backupCount': backup_count,
@@ -228,7 +230,7 @@ def logger(msg, *args, **extra):
 
         args, extra = OmitLongString(args), OmitLongString(extra)
 
-        if sys.version_info.major < 3 and isinstance(msg, str):
+        if py2 and isinstance(msg, str):
             msg = msg.decode('utf8', errors='replace')
 
         if is_char(msg):
@@ -242,18 +244,26 @@ def logger(msg, *args, **extra):
 
         if has_flask_request_context():
             transaction_id = getattr(g, '__transaction_id__', None)
+            view_func = current_app.view_functions.get(request.endpoint)
             method_code = (
+                getattr(view_func, '__method_code__', None) or
                 getattr(request, 'method_code', None) or
-                FuzzyGet(getattr(g, '__request_headers__', {}), 'Method-Code').v or
-                FuzzyGet(getattr(g, '__request_payload__', {}), 'method_code').v
+                getattr(g, 'method_code', None) or
+                FuzzyGet(getattr(g, '__request_headers__', None), 'Method-Code').v or
+                FuzzyGet(getattr(g, '__request_payload__', None), 'method_code').v
             )
         elif has_fastapi_request_context():
-            state = FastAPIJournallogMiddleware.local.request.state
-            transaction_id = getattr(state, '__transaction_id__', None)
+            fastapi_request = FastAPIJournallogMiddleware.local.request
+            transaction_id = getattr(fastapi_request.state, '__transaction_id__', None)
+            try:
+                view_func = fastapi_request.scope['route'].endpoint
+            except (KeyError, AttributeError):
+                view_func = None
             method_code = (
-                getattr(state, 'method_code', None) or
-                FuzzyGet(getattr(state, '__request_headers__', {}), 'Method-Code').v or
-                FuzzyGet(getattr(state, '__request_payload__', {}), 'method_code').v
+                getattr(view_func, '__method_code__', None) or
+                getattr(fastapi_request.state, 'method_code', None) or
+                FuzzyGet(getattr(fastapi_request.state, '__request_headers__', None), 'Method-Code').v or
+                FuzzyGet(getattr(fastapi_request.state, '__request_payload__', None), 'method_code').v
             )
         else:
             transaction_id = uuid.uuid4().hex
@@ -263,7 +273,7 @@ def logger(msg, *args, **extra):
         level  = f_back.f_code.co_name
 
         f_back = f_back.f_back
-        module = f_back.f_globals['__name__']
+        module = f_back.f_globals.get('__name__', '<NotFound>')
         name   = getattr(f_back.f_code, co_qualname)
         line   = f_back.f_lineno
 
@@ -378,14 +388,15 @@ def journallog_flask(response):
 
         fcode = FuzzyGet(g.__request_headers__, 'User-Agent').v
 
+        view_func = current_app.view_functions.get(request.endpoint)
+
         method_code = (
+            getattr(view_func, '__method_code__', None) or
             getattr(request, 'method_code', None) or
             FuzzyGet(g.__request_headers__, 'Method-Code').v or
             FuzzyGet(g.__request_payload__, 'method_code').v
         )
-
-        view_func = current_app.view_functions.get(request.endpoint)
-        method_name = view_func.__name__ if view_func else None
+        method_name = getattr(view_func, '__name__', None)
 
         journallog_logger(
             transaction_id=g.__transaction_id__,
@@ -436,14 +447,34 @@ def journallog_request(func):
 
             if has_flask_request_context():
                 transaction_id = getattr(g, '__transaction_id__', None)
+                view_func = current_app.view_functions.get(request.endpoint)
+                method_code = (
+                    getattr(view_func, '__method_code__', None) or
+                    getattr(request, 'method_code', None) or
+                    getattr(g, 'method_code', None) or
+                    FuzzyGet(getattr(g, '__request_headers__', None), 'Method-Code').v or
+                    FuzzyGet(getattr(g, '__request_payload__', None), 'method_code').v
+                )
             elif has_fastapi_request_context():
-                transaction_id = getattr(FastAPIJournallogMiddleware.local.request.state, '__transaction_id__', None)
+                fastapi_request = FastAPIJournallogMiddleware.local.request
+                transaction_id = getattr(fastapi_request.state, '__transaction_id__', None)
+                try:
+                    view_func = fastapi_request.scope['route'].endpoint
+                except (KeyError, AttributeError):
+                    view_func = None
+                method_code = (
+                    getattr(view_func, '__method_code__', None) or
+                    getattr(fastapi_request.state, 'method_code', None) or
+                    FuzzyGet(getattr(fastapi_request.state, '__request_headers__', None), 'Method-Code').v or
+                    FuzzyGet(getattr(fastapi_request.state, '__request_payload__', None), 'method_code').v
+                )
             else:
                 transaction_id = (
                     FuzzyGet(headers, 'Transaction-ID').v or
                     FuzzyGet(request_payload, 'transaction_id').v or
                     uuid.uuid4().hex
                 )
+                method_code = FuzzyGet(headers, 'Method-Code').v or FuzzyGet(request_payload, 'method_code').v
 
             if headers is None:
                 headers = {'User-Agent': this.syscode, 'Transaction-ID': transaction_id}
@@ -483,9 +514,9 @@ def journallog_request(func):
                 address=parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path,
                 fcode=this.syscode,
                 tcode=get_tcode(parsed_url, headers, request_payload),
-                method_code=FuzzyGet(headers, 'Method-Code').v or FuzzyGet(request_payload, 'method_code').v,
+                method_code=method_code,
                 method_name=method_name,
-                http_method=method,
+                http_method=method.upper(),
                 request_time=request_time,
                 request_headers=dict(response.request.headers),
                 request_payload=request_payload,
@@ -515,7 +546,8 @@ class JournallogUnirest(object):
     def __call__(self, method, url, params={}, headers=None, *a, **kw):
         try:
             parsed_url = urlparse(url)
-            request_headers, request_payload = self.before(parsed_url.query, params, headers)
+            request_headers, request_payload, transaction_id, method_code = \
+                self.before(parsed_url.query, params, headers)
             request_time = datetime.now()
         except Exception:
             sys.stderr.write(
@@ -526,7 +558,16 @@ class JournallogUnirest(object):
         response = self.__wrapped__(method, url, params, headers, *a, **kw)
 
         try:
-            self.after(method, parsed_url, request_time, request_headers, request_payload, response)
+            self.after(
+                method=method,
+                parsed_url=parsed_url,
+                request_time=request_time,
+                request_headers=request_headers,
+                request_payload=request_payload,
+                response=response,
+                transaction_id=transaction_id,
+                method_code=method_code
+            )
         except Exception:
             sys.stderr.write(
                 traceback.format_exc() +
@@ -548,24 +589,47 @@ class JournallogUnirest(object):
 
         if has_flask_request_context():
             transaction_id = getattr(g, '__transaction_id__', None)
+            view_func = current_app.view_functions.get(request.endpoint)
+            method_code = (
+                getattr(view_func, '__method_code__', None) or
+                getattr(request, 'method_code', None) or
+                getattr(g, 'method_code', None) or
+                FuzzyGet(getattr(g, '__request_headers__', None), 'Method-Code').v or
+                FuzzyGet(getattr(g, '__request_payload__', None), 'method_code').v
+            )
         elif has_fastapi_request_context():
-            transaction_id = getattr(FastAPIJournallogMiddleware.local.request.state, '__transaction_id__', None)
+            fastapi_request = FastAPIJournallogMiddleware.local.request
+            transaction_id = getattr(fastapi_request.state, '__transaction_id__', None)
+            try:
+                view_func = fastapi_request.scope['route'].endpoint
+            except (KeyError, AttributeError):
+                view_func = None
+            method_code = (
+                getattr(view_func, '__method_code__', None) or
+                getattr(fastapi_request.state, 'method_code', None) or
+                FuzzyGet(getattr(fastapi_request.state, '__request_headers__', None), 'Method-Code').v or
+                FuzzyGet(getattr(fastapi_request.state, '__request_payload__', None), 'method_code').v
+            )
         else:
             transaction_id = (
                 FuzzyGet(request_headers, 'Transaction-ID').v or
                 FuzzyGet(request_payload, 'transaction_id').v or
                 uuid.uuid4().hex
             )
+            method_code = FuzzyGet(request_headers, 'Method-Code').v or FuzzyGet(request_payload, 'method_code').v
+
         if request_headers is None:
             request_headers = {'User-Agent': this.syscode, 'Transaction-ID': transaction_id}
         elif isinstance(request_headers, dict):
             request_headers.setdefault('User-Agent', this.syscode)
             request_headers.setdefault('Transaction-ID', transaction_id)
 
-        return request_headers, request_payload
+        return request_headers, request_payload, transaction_id, method_code
 
     @staticmethod
-    def after(method, parsed_url, request_time, request_headers, request_payload, response):
+    def after(
+            method, parsed_url, request_time, request_headers, request_payload, response, transaction_id, method_code
+    ):
         method_name = FuzzyGet(request_headers, 'Method-Name').v
         if method_name is None:
             f_back = inspect.currentframe().f_back.f_back.f_back.f_back
@@ -576,14 +640,14 @@ class JournallogUnirest(object):
             request_ip = None
 
         journallog_logger(
-            transaction_id=request_headers['Transaction-ID'],
+            transaction_id=transaction_id,
             dialog_type='out',
             address=parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path,
             fcode=this.syscode,
             tcode=get_tcode(parsed_url, request_headers, request_payload),
-            method_code=FuzzyGet(request_headers, 'Method-Code').v or FuzzyGet(request_payload, 'method_code').v,
+            method_code=method_code,
             method_name=method_name,
-            http_method=method,
+            http_method=method.upper(),
             request_time=request_time,
             request_headers=request_headers,
             request_payload=request_payload,
@@ -624,7 +688,7 @@ class JournallogCectConsumer(object):
             fcode=FuzzyGet(message, 'fcode').v,
             tcode=this.syscode,
             method_code=None,
-            method_name=self.__wrapped__.__name__,
+            method_name=getattr(self.__wrapped__, '__name__', None),
             http_method=None,
             request_time=request_time,
             request_headers=None,
@@ -716,6 +780,18 @@ def journallog_logger(
     glog.info(try_json_dumps(data), gname='info_')
 
 
+def set_method_code(method_code):
+    def inner(func):
+        try:
+            func.__method_code__ = method_code
+        except Exception as e:
+            funcname = getattr(func, '__name__', func)
+            emsg = 'Set method code "%s" to api handler "%s" error: %s' % (method_code, funcname, repr(e))
+            sys.stderr.write('\n' + emsg + '\n') if py2 else warning(emsg)
+        return func
+    return inner
+
+
 class OmitLongString(dict):
 
     def __init__(self, data):
@@ -727,7 +803,7 @@ class OmitLongString(dict):
             return dict.__new__(cls)
         if isinstance(data, (list, tuple)):
             return data.__class__(cls(v) for v in data)
-        if sys.version_info.major < 3 and isinstance(data, str):
+        if py2 and isinstance(data, str):
             data = data.decode('utf8', errors='replace')
         if is_char(data) and len(data) > 1000:
             data = '<Ellipsis>'
@@ -781,7 +857,7 @@ def is_syscode(x):
 
 
 def is_valid_ip(ip):
-    if sys.version_info.major < 3 and isinstance(ip, str):
+    if py2 and isinstance(ip, str):
         ip = ip.decode('utf8', errors='replace')
     try:
         ipaddress.ip_address(ip)
