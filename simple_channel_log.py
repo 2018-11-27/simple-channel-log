@@ -60,18 +60,18 @@ def set_method_code(method_code):
 class _xe6_xad_x8c_xe7_x90_xaa_xe6_x80_xa1_xe7_x8e_xb2_xe8_x90_x8d_xe4_xba_x91:
     import sys
 
-    ipath = __name__ + '.i ' + __name__
+    ipath = 'i ' + __name__
     __import__(ipath)
 
-    ipack = sys.modules[__name__]
-    icode = globals()['i ' + __name__]
+    ipack = globals()
+    icode = sys.modules[ipath]
 
-    for iname in globals():
+    for iname in ipack:
         if iname[0] != '_':
             ifunc = getattr(icode, iname, None)
             if ifunc:
                 ifunc.__module__ = __package__
-                ifunc.__doc__ = getattr(ipack, iname).__doc__
-                setattr(ipack, iname, ifunc)
+                ifunc.__doc__ = ipack[iname].__doc__
+                ipack[iname] = ifunc
 
-    ipack.__init__ = icode.__init__
+    ipack['__init__'] = icode.__init__

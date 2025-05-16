@@ -1,2 +1,3 @@
-gqylpy_log==0.0a1
+exceptionx  # ">=4.1.8,<5.0" if sys.version_info >= (3, 8) else "<1.0"
+gqylpy_log  # ">=2.0.2,<3.0" if sys.version_info >= (3, 8) else "==0.0a1"
 ipaddress>=1.0.23,<2.0

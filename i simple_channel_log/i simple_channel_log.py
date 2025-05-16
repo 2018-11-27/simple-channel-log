@@ -16,6 +16,7 @@ from datetime import datetime
 if os.path.basename(sys.argv[0]) != 'setup.py':
     import ipaddress
     import gqylpy_log as glog
+    from exceptionx import TryExcept, TryContext
 
 try:
     from flask import Flask
@@ -102,14 +103,14 @@ deprecated = object()
 
 def __init__(
         appname,
-        syscode=deprecated,
-        logdir=r'C:\BllLogs' if sys.platform == 'win32' else '/app/logs',
-        when='D',
-        interval=1,
-        backup_count=7,
-        stream=deprecated,
-        output_to_terminal=None,
-        enable_journallog_in=deprecated,
+        syscode              =deprecated,
+        logdir               =r'C:\BllLogs' if sys.platform == 'win32' else '/app/logs',
+        when                 ='D',
+        interval             =1,
+        backup_count         =7,
+        stream               =deprecated,
+        output_to_terminal   =None,
+        enable_journallog_in =deprecated,
         enable_journallog_out=deprecated
 ):
     if hasattr(this, 'appname'):
@@ -301,7 +302,9 @@ def logger(msg, *args, **extra):
         getattr(glog, level)(try_json_dumps(data), gname='code')
 
         if this.output_to_terminal:
-            getattr(glog, level)('[%s] %s' % (logger_, msg), gname='stream')
+            if module != 'exceptionx.i exceptionx':
+                msg = '[%s] %s' % (logger_, msg)
+            getattr(glog, level)(msg, gname='stream')
     except Exception:
         sys.stderr.write(traceback.format_exc() + '\nAn exception occurred while recording the log.\n')
 

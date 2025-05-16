@@ -6,13 +6,13 @@ import threading
 
 from datetime import datetime
 
-from fastapi import Request
-from fastapi import Response
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.base import RequestResponseEndpoint
+from fastapi import Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+
+from ..tools import FuzzyGet, try_json_loads
 
 from types import ModuleType
-from typing import Type, TypeVar, ClassVar, Union, Dict, Any
+from typing import TypeVar, ClassVar, Union, Dict, Any
 
 if sys.version_info >= (3, 9):
     from typing import Annotated
@@ -31,7 +31,7 @@ Str: TypeAlias = Annotated[Union[str, None], 'Compatible with None type.']
 simple_channel_log: ModuleType = __import__(__package__ + '.i ' + __package__, fromlist=...)
 
 
-class JournallogMiddleware(BaseHTTPMiddleware):
+class FastAPITransactionLog(BaseHTTPMiddleware):
     appname: ClassVar[str]
     syscode: ClassVar[str]
 
@@ -164,51 +164,3 @@ class JournallogMiddleware(BaseHTTPMiddleware):
             http_status_code=response.status_code,
             request_ip=request.client.host
         )
-
-
-class OmitLongString(dict):
-
-    def __init__(self, data) -> None:
-        for name, value in data.items():
-            dict.__setitem__(self, name, OmitLongString(value))
-
-    def __new__(cls, data) -> Type[dict]:
-        if isinstance(data, dict):
-            return dict.__new__(cls)
-        if isinstance(data, (list, tuple)):
-            return data.__class__(cls(v) for v in data)
-        if isinstance(data, str) and len(data) > 1000:
-            data = '<Ellipsis>'
-        return data
-
-
-class FuzzyGet(dict):
-    v = None
-
-    def __init__(self, data, key, root=None):
-        if root is None:
-            if isinstance(data, (list, tuple)):
-                data = {'data': data}
-            self.key = key.replace(' ', '').replace('-', '').replace('_', '').lower()
-            root = self
-        for k, v in data.items():
-            if k.replace(' ', '').replace('-', '').replace('_', '').lower() == root.key:
-                root.v = data[k]
-                break
-            dict.__setitem__(self, k, FuzzyGet(v, key=key, root=root))
-
-    def __new__(cls, data, key, root=None):
-        if root is None and isinstance(data, (list, tuple)):
-            data = {'data': data}
-        if isinstance(data, dict):
-            return dict.__new__(cls)
-        if isinstance(data, (list, tuple)):
-            return data.__class__(cls(v, key, root) for v in data)
-        return cls
-
-
-def try_json_loads(data):
-    try:
-        return json.loads(data)
-    except json.JSONDecodeError:
-        pass
