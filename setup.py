@@ -6,6 +6,13 @@ import setuptools
 if sys.version_info.major < 3:
     open = codecs.open
 
+if sys.version_info >= (3, 8):
+    exceptionx = 'exceptionx>=4.1.8,<5.0'
+    gqylpy_log = 'gqylpy_log>=2.0.2,<3.0'
+else:
+    exceptionx = 'exceptionx<1.0'
+    gqylpy_log = 'gqylpy_log==0.0a1'
+
 setuptools.setup(
     name='simple-channel-log',
     version='1.8',
@@ -23,14 +30,11 @@ setuptools.setup(
     long_description_content_type='text/markdown',
     packages=['simple_channel_log'],
     python_requires='>=2.7',
-    install_requires=[
-        'gqylpy_log==0.0a1',
-        'ipaddress>=1.0.23,<2.0'
-    ],
+    install_requires=[exceptionx, gqylpy_log, 'ipaddress>=1.0.23,<2.0'],
     extras_require={
         'flask': ['Flask>=0.10'],
-        'requests': ['requests>=2.19'],
         'fastapi': ['fastapi>=0.83.0'],
+        'requests': ['requests>=2.19'],
         'unirest': ['unirest>=1.0.5'],
         'ctec-consumer': ['ctec-consumer>=0.1']
     },
