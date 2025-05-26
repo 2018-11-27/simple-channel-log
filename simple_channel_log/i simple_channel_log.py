@@ -720,6 +720,10 @@ def journallog_logger(
         request_ip,        # type: Str
         **extra
 ):
+    order_id      = fuzzy_get_many((request_payload, response_payload), 'order_id', 'ht_id')
+    province_code = FuzzyGet(request_payload, 'province_code').v or FuzzyGet(response_payload, 'province_code').v
+    city_code     = FuzzyGet(request_payload, 'city_code').v or FuzzyGet(response_payload, 'city_code').v
+
     account_num           = fuzzy_get_many(request_payload, 'phone', 'phone_num', 'number', 'accnbr')
     response_account_num  = fuzzy_get_many(response_payload, 'phone', 'phone_num', 'accnbr', 'receive_phone')
     account_type          = None if account_num is None else '11'
@@ -754,9 +758,9 @@ def journallog_logger(
         'response_code': FuzzyGet(response_payload, 'code').v,
         'response_remark': None,
         'http_status_code': http_status_code,
-        'order_id': fuzzy_get_many((request_payload, response_payload), 'order_id', 'ht_id'),
-        'province_code': FuzzyGet(request_payload, 'province_code').v or FuzzyGet(response_payload, 'province_code').v,
-        'city_code': FuzzyGet(request_payload, 'city_code').v or FuzzyGet(response_payload, 'city_code').v,
+        'order_id': order_id,
+        'province_code': province_code,
+        'city_code': city_code,
         'error_code': None,
         'request_ip': request_ip,
         'host_ip': socket.gethostbyname(socket.gethostname()),
@@ -819,6 +823,8 @@ class FuzzyGet(dict):
                 data = {'data': data}
             self.key = key.replace(' ', '').replace('-', '').replace('_', '').lower()
             root = self
+        elif root.v is not None:
+            return
         for k, v in data.items():
             if k.replace(' ', '').replace('-', '').replace('_', '').lower() == root.key:
                 root.v = data[k]
