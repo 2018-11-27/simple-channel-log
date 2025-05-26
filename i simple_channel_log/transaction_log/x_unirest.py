@@ -59,9 +59,9 @@ class UnirestTransactionLog(TransactionLogBase):
             method_code = FuzzyGet(request_headers, 'Method-Code').v or FuzzyGet(request_payload, 'method_code').v
 
         if request_headers is None:
-            request_headers = {'User-Agent': self.syscode, 'Transaction-ID': transaction_id}
+            request_headers = {'User-Agent': self.svccode, 'Transaction-ID': transaction_id}
         elif isinstance(request_headers, dict):
-            request_headers.setdefault('User-Agent', self.syscode)
+            request_headers.setdefault('User-Agent', self.svccode)
             request_headers.setdefault('Transaction-ID', transaction_id)
 
         return request_headers, request_payload, transaction_id, method_code
@@ -90,7 +90,7 @@ class UnirestTransactionLog(TransactionLogBase):
             transaction_id=transaction_id,
             dialog_type='out',
             address=parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path,
-            fcode=self.syscode,
+            fcode=self.svccode,
             tcode=get_tcode(parsed_url, request_headers, request_payload),
             method_code=method_code,
             method_name=method_name,

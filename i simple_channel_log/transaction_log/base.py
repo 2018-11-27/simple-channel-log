@@ -51,7 +51,7 @@ class TransactionLogBase(object):
     __metaclass__ = abc.ABCMeta
 
     appname = None
-    syscode = None
+    svccode = None
     output_to_terminal = False
 
     def __init__(self, func):
