@@ -43,18 +43,25 @@ def fatal    (msg, *args, **extra): pass
 def trace(**extra): pass  # 埋点日志
 
 
-def set_method_code(method_code):
+def method_code(I):
     """
-    `set_method_code` 是一个装饰器函数，用于给 API 处理函数设置接口编码（method_code）。
-    设置的接口编码最终会记录到流水日志中，便于追踪和区分不同的 API 接口。该装饰器适用于
-    Flask、FastAPI 等框架的 API 处理函数。
+    `method_code` 是一个装饰器，用于给 API 处理函数设置接口编码（I）。设置的接口编码最终
+    会记录到流水日志中，便于追踪和区分不同的 API 接口。该装饰器适用于 Flask、FastAPI 等
+    框架的 API 处理函数。
 
     使用示例：
         >>> @app.get("/index")
-        >>> @set_method_code("I00101")
+        >>> @method_code("I00101")
         >>> def index():
         >>>     return {"msg": "ok"}
     """
+
+
+def set_method_code(method_code):
+    warnings.warn(
+        "The `set_method_code` has been deprecated, replaced to `method_code`.",
+        DeprecationWarning
+    )
 
 
 class _xe6_xad_x8c_xe7_x90_xaa_xe6_x80_xa1_xe7_x8e_xb2_xe8_x90_x8d_xe4_xba_x91:

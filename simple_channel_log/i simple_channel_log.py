@@ -784,16 +784,23 @@ def journallog_logger(
     glog.info(try_json_dumps(data), gname='info_')
 
 
-def set_method_code(method_code):
+def method_code(I):
     def inner(func):
         try:
-            func.__method_code__ = method_code
+            func.__method_code__ = I
         except Exception as e:
             funcname = getattr(func, '__name__', func)
-            emsg = 'Set method code "%s" to api handler "%s" error: %s' % (method_code, funcname, repr(e))
+            emsg = 'Set method code "%s" to api handler "%s" error: %s' % (I, funcname, repr(e))
             sys.stderr.write('\n' + emsg + '\n') if py2 else warning(emsg)
         return func
     return inner
+
+
+method_code_alias = method_code
+
+
+def set_method_code(method_code):
+    return method_code_alias(method_code)
 
 
 class OmitLongString(dict):

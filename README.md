@@ -1,7 +1,7 @@
 # simple-channel-log
 
 [![Release](https://img.shields.io/github/release/2018-11-27/simple-channel-log.svg?style=flat-square")](https://github.com/2018-11-27/simple-channel-log/releases/latest)
-[![Python Version](https://img.shields.io/badge/python-2.7+/3.6+-blue.svg)](https://github.com/2018-11-27/simple-channel-log)
+[![Python Version](https://img.shields.io/badge/python-2.7+/3.6+-blue.svg)](https://pypi.org/project/simple-channel-log)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Downloads](https://pepy.tech/badge/simple-channel-log)](https://pepy.tech/project/simple-channel-log)
 
@@ -64,7 +64,7 @@ app = Flask(__name__)
 
 @app.get("/index")
 # 若要在日志中记录接口编码，你需要使用如下装饰器显式设置
-# @log.set_method_code("I00101")
+# @log.method_code("I00101")
 def index():
     return {"msg": "ok"}
 
@@ -94,7 +94,7 @@ log.__init__("<your_appname>")
 
 @app.get("/index")
 # 若要在日志中记录接口编码，你需要使用如下装饰器显式设置
-# @log.set_method_code("I00101")
+# @log.method_code("I00101")
 async def index(request: Request):
     return {"msg": "ok"}
 
