@@ -117,7 +117,7 @@ def __init__(
 
     prefix = re.match(r'[a-zA-Z]\d{9}[_-]', appname)
     if prefix is None:
-        raise ValueError('parameter appname "%s" is illegal.' % appname)
+        raise ValueError('parameter appname "%s" is not compliant.' % appname)
 
     if syscode is not deprecated:
         warnings.warn('parameter "syscode" is deprecated.', category=DeprecationWarning, stacklevel=2)
@@ -720,7 +720,7 @@ def journallog_logger(
         request_ip,        # type: Str
         **extra
 ):
-    order_id      = fuzzy_get_many((request_payload, response_payload), 'order_id', 'ht_id')
+    order_id      = fuzzy_get_many((request_payload, response_payload), 'order_id', 'ht_id', 'id')
     province_code = FuzzyGet(request_payload, 'province_code').v or FuzzyGet(response_payload, 'province_code').v
     city_code     = FuzzyGet(request_payload, 'city_code').v or FuzzyGet(response_payload, 'city_code').v
 
