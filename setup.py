@@ -8,7 +8,7 @@ if sys.version_info.major < 3:
 
 setuptools.setup(
     name='simple-channel-log',
-    version='1.8.3',
+    version='1.8.4',
     author='Nameless Master',
     author_email='<gqylpy@outlook.com>',
     license='MIT',
@@ -59,6 +59,7 @@ setuptools.setup(
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',
-        'Programming Language :: Python :: 3.13'
+        'Programming Language :: Python :: 3.13',
+        'Programming Language :: Python :: 3.14'
     ]
 )

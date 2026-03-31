@@ -720,7 +720,7 @@ def journallog_logger(
         request_ip,        # type: Str
         **extra
 ):
-    order_id      = fuzzy_get_many((request_payload, response_payload), 'order_id', 'ht_id', 'id')
+    order_id      = fuzzy_get_many((request_payload, response_payload), 'order_id', 'ht_id', 'trans_id', 'extra', 'id')
     province_code = FuzzyGet(request_payload, 'province_code').v or FuzzyGet(response_payload, 'province_code').v
     city_code     = FuzzyGet(request_payload, 'city_code').v or FuzzyGet(response_payload, 'city_code').v
 
