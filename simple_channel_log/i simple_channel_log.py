@@ -400,7 +400,7 @@ def journallog_flask(response):
 
         journallog_logger(
             transaction_id=g.__transaction_id__,
-            dialog_type='in',
+            dialog_type='incoming',
             address=address,
             fcode=fcode,
             tcode=this.syscode,
@@ -510,7 +510,7 @@ def journallog_request(func):
 
             journallog_logger(
                 transaction_id=transaction_id,
-                dialog_type='out',
+                dialog_type='outgoing',
                 address=parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path,
                 fcode=this.syscode,
                 tcode=get_tcode(parsed_url, headers, request_payload),
@@ -641,7 +641,7 @@ class JournallogUnirest(object):
 
         journallog_logger(
             transaction_id=transaction_id,
-            dialog_type='out',
+            dialog_type='outgoing',
             address=parsed_url.scheme + '://' + parsed_url.netloc + parsed_url.path,
             fcode=this.syscode,
             tcode=get_tcode(parsed_url, request_headers, request_payload),
@@ -683,7 +683,7 @@ class JournallogCectConsumer(object):
     def after(self, request_time, message, code):
         journallog_logger(
             transaction_id=FuzzyGet(message, 'transaction_id').v or uuid.uuid4().hex,
-            dialog_type='in',
+            dialog_type='incoming',
             address=None,
             fcode=FuzzyGet(message, 'fcode').v,
             tcode=this.syscode,

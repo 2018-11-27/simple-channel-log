@@ -149,7 +149,7 @@ class JournallogMiddleware(BaseHTTPMiddleware):
 
         simple_channel_log.journallog_logger(
             transaction_id=self.transaction_id,
-            dialog_type='in',
+            dialog_type='incoming',
             address=address,
             fcode=fcode,
             tcode=self.syscode,
